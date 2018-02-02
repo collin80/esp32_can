@@ -28,8 +28,8 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#ifndef MCP2515_h
-#define MCP2515_h
+#ifndef __ESP32_CAN__
+#define __ESP32_CAN__
 
 #include "Arduino.h"
 #include <can_common.h>
@@ -67,5 +67,7 @@ class ESP32CAN : public CAN_COMMON
     // Pin variables
 	//void (*cbCANFrame[7])(CAN_FRAME *); //6 filters plus an optional catch all
 };
+
+extern ESP32CAN CAN;
 
 #endif

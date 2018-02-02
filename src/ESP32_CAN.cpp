@@ -29,9 +29,6 @@ void task_CAN( void *pvParameters ){
     }
 }
 
-
-
-
 ESP32CAN::ESP32CAN() : CAN_COMMON(6) 
 {
 
@@ -47,14 +44,14 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
 
 }
 
-uint32_t init(uint32_t ul_baudrate)
+uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 {
                                  //Queue size, item size
     CAN_cfg.rx_queue = xQueueCreate(32,sizeof(CAN_frame_t));
     CAN_cfg.tx_queue = xQueueCreate(16,sizeof(CAN_frame_t));
               //func          desc     stack, params, priority, handle to task
-    xTaskCreate(&task_CAN_RX, "CAN_RX", 2048, this, 5, NULL);
-    CAN_cfg.speed = ul_baudrate;
+    xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
+    CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     CAN_init();
 }
 
@@ -66,7 +63,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
 uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
 {
     CAN_stop();
-    CAN_cfg.speed = ul_baudrate;
+    CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     CAN_init();
 }
 
@@ -91,12 +88,12 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     CAN_frame_t __TX_frame;
 
     __TX_frame.MsgID = txFrame.id;
-    __TX_frame.DIR.B.DLC = txFrame.length;
-    __TX_frame.FIR.B.RTR = txFrame.rtr;
-    __TX_frame.FIR.B.FF = txFrame.extended;
+    __TX_frame.FIR.B.DLC = txFrame.length;
+    __TX_frame.FIR.B.RTR = (CAN_RTR_t)txFrame.rtr;
+    __TX_frame.FIR.B.FF = (CAN_frame_format_t)txFrame.extended;
     for (int i = 0; i < 8; i++) __TX_frame.data.u8[i] = txFrame.data.byte[i];
 
-    if (CAN_Tx_IsBusy()) //hardware already sending, queue for sending when possible
+    if (CAN_TX_IsBusy()) //hardware already sending, queue for sending when possible
     {
         xQueueSend(CAN_cfg.tx_queue,&__TX_frame,0);
     }
@@ -123,7 +120,7 @@ uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
     if(xQueueReceive(CAN_cfg.rx_queue,&__RX_frame, 0)==pdTRUE)
     {
         msg.id = __RX_frame.MsgID;
-        msg.length = __RX_frame.DIR.B.DLC;
+        msg.length = __RX_frame.FIR.B.DLC;
         msg.rtr = __RX_frame.FIR.B.RTR;
         msg.extended = __RX_frame.FIR.B.FF;
         for (int i = 0; i < 8; i++) msg.data.byte[i] = __RX_frame.data.u8[i];
@@ -131,6 +128,8 @@ uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
     }
     return false;
 }
+
+ESP32CAN CAN;
 
 /*
 void MCP2515::intHandler(void) {

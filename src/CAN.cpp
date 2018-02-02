@@ -41,19 +41,14 @@
 #include "can_regdef.h"
 #include "CAN_config.h"
 
-
-static void CAN_read_frame();
-static void CAN_isr(void *arg_p);
-
-
-static void CAN_isr(void *arg_p)
+extern "C" void CAN_isr(void *arg_p)
 {
 	//Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
     CAN_frame_t __frame;
 
     // Read interrupt status and clear flags
-    interrupt = MODULE_CAN->IR.U;
+    interrupt = (__CAN_IRQ_t)MODULE_CAN->IR.U;
 
     // Handle TX complete interrupt
     if ((interrupt & __CAN_IRQ_TX) != 0) 
@@ -82,7 +77,7 @@ static void CAN_isr(void *arg_p)
     }
 }
 
-static void CAN_read_frame()
+void CAN_read_frame()
 {
 
 	//byte iterator
@@ -137,13 +132,13 @@ static void CAN_read_frame()
 
 bool CAN_TX_IsBusy()
 {
-    return !(MODULE_CAN->SR.TBS);
+    return !(MODULE_CAN->SR.B.TBS);
 }
 
 void CAN_SetListenOnly(bool mode)
 {
     CAN_stop();
-    MODULE_CAN->MOD.LOM = mode?1:0;
+    MODULE_CAN->MOD.B.LOM = mode?1:0;
     CAN_init();
 }
 

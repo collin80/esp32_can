@@ -62,7 +62,7 @@ typedef union{uint32_t U;					/**< \brief Unsigned access */
 
 /** \brief CAN Frame structure */
 typedef struct {
-	CAN_FIR_t	FIR;CAN_frame_t __RX_frame;						/**< \brief Frame information record*/
+	CAN_FIR_t	FIR;						/**< \brief Frame information record*/
     uint32_t 	MsgID;     					/**< \brief Message ID */
     union {
         uint8_t u8[8];						/**< \brief Payload byte access*/
@@ -70,6 +70,8 @@ typedef struct {
     } data;
 }CAN_frame_t;
 
+
+void CAN_read_frame();
 
 /**
  * \brief Initialize the CAN Module
