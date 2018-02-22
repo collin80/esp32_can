@@ -43,29 +43,39 @@
 #include "CAN.h"
 
 //#define DEBUG_SETUP
+#define NUM_FILTERS 8
+
+typedef struct
+{
+  uint32_t mask;
+  uint32_t id;
+  bool extended;
+  bool configured;
+} ESP32_FILTER;
 
 class ESP32CAN : public CAN_COMMON
 {
-  public:
-    ESP32CAN();
-	
-    //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
-	int _setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended);
-    int _setFilter(uint32_t id, uint32_t mask, bool extended);
-	uint32_t init(uint32_t ul_baudrate);
-    uint32_t beginAutoSpeed();
-    uint32_t set_baudrate(uint32_t ul_baudrate);
-    void setListenOnlyMode(bool state);
-	void enable();
-	void disable();
-	bool sendFrame(CAN_FRAME& txFrame);
-	bool rx_avail();
-	uint16_t available(); //like rx_avail but returns the number of waiting frames
-	uint32_t get_rx_buff(CAN_FRAME &msg);
-	
-  private:
-    // Pin variables
-	//void (*cbCANFrame[7])(CAN_FRAME *); //6 filters plus an optional catch all
+public:
+  ESP32CAN();
+
+  //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
+  int _setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended);
+  int _setFilter(uint32_t id, uint32_t mask, bool extended);
+  uint32_t init(uint32_t ul_baudrate);
+  uint32_t beginAutoSpeed();
+  uint32_t set_baudrate(uint32_t ul_baudrate);
+  void setListenOnlyMode(bool state);
+  void enable();
+  void disable();
+  bool sendFrame(CAN_FRAME& txFrame);
+  bool rx_avail();
+  uint16_t available(); //like rx_avail but returns the number of waiting frames
+  uint32_t get_rx_buff(CAN_FRAME &msg);
+  bool processFrame(CAN_frame_t &frame);
+
+private:
+  // Pin variables
+  ESP32_FILTER filters[NUM_FILTERS];
 };
 
 extern ESP32CAN CAN;

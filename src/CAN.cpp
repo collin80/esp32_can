@@ -40,6 +40,7 @@
 
 #include "can_regdef.h"
 #include "CAN_config.h"
+#include "ESP32_CAN.h"
 
 extern "C" void CAN_isr(void *arg_p)
 {
@@ -79,7 +80,6 @@ extern "C" void CAN_isr(void *arg_p)
 
 void CAN_read_frame()
 {
-
 	//byte iterator
 	uint8_t __byte_i;
 
@@ -90,44 +90,39 @@ void CAN_read_frame()
     if (CAN_cfg.rx_queue == NULL)
     {
         // Let the hardware know the frame has been read.
-        MODULE_CAN->CMR.B.RRB=1;
+        MODULE_CAN->CMR.B.RRB = 1;
         return;
     }
 
 	//get FIR
-	__frame.FIR.U=MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
+	__frame.FIR.U = MODULE_CAN->MBX_CTRL.FCTRL.FIR.U;
 
     //check if this is a standard or extended CAN frame
     //standard frame
-    if(__frame.FIR.B.FF==CAN_frame_std)
+    if(__frame.FIR.B.FF == CAN_frame_std)
     {
-
         //Get Message ID
         __frame.MsgID = _CAN_GET_STD_ID;
 
         //deep copy data bytes
-        for(__byte_i=0;__byte_i<__frame.FIR.B.DLC;__byte_i++)
-        	__frame.data.u8[__byte_i]=MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[__byte_i];
-
+        for(__byte_i = 0;__byte_i < __frame.FIR.B.DLC; __byte_i++)
+        	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.STD.data[__byte_i];
     }
     //extended frame
     else
     {
-
         //Get Message ID
         __frame.MsgID = _CAN_GET_EXT_ID;
 
         //deep copy data bytes
-        for(__byte_i=0;__byte_i<__frame.FIR.B.DLC;__byte_i++)
-        	__frame.data.u8[__byte_i]=MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
-
+        for(__byte_i=0;__byte_i < __frame.FIR.B.DLC; __byte_i++)
+        	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
-    //send frame to input queue
-    xQueueSendFromISR(CAN_cfg.rx_queue,&__frame,0);
+    CAN.processFrame(__frame);
 
     //Let the hardware know the frame has been read.
-    MODULE_CAN->CMR.B.RRB=1;
+    MODULE_CAN->CMR.B.RRB = 1;
 }
 
 bool CAN_TX_IsBusy()
