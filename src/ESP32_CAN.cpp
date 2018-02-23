@@ -17,6 +17,56 @@ CAN_device_t CAN_cfg = {
     NULL
 };
 
+QueueHandle_t callbackQueue;
+
+/*
+Issue callbacks to registered functions and objects
+Used to keep this kind of thing out of the interrupt handler
+The callback type and mailbox are passed in the fid member of the
+CAN_FRAME struct. It isn't really used by anything.
+Layout of the storage:
+bit   31 -    If set indicates an object callback
+bits  24-30 - Idx into listener table
+bits  0-7   - Mailbox number that triggered callback
+*/
+void task_CAN( void *pvParameters )
+{
+    ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    CAN_FRAME rxFrame;
+
+    while (1)
+    {
+        //receive next CAN frame from queue and fire off the callback
+        if(xQueueReceive(callbackQueue,&rxFrame, 0)==pdTRUE)
+        {
+            espCan->sendCallback(&rxFrame);
+        }
+    }
+}
+
+void ESP32CAN::sendCallback(CAN_FRAME *frame)
+{
+    //frame buffer
+    CANListener *thisListener;
+    int mb;
+    int idx;
+
+    mb = (frame->fid & 0xFF);
+    if (mb == 0xFF) mb = -1;
+
+    if (frame->fid & 0x80000000ul) //object callback
+    {
+        idx = (frame->fid >> 24) & 0x7F;
+        thisListener = listener[idx];
+        thisListener->gotFrame(frame, mb);
+    }
+    else //C function callback
+    {
+        if (mb > -1) (*cbCANFrame[mb])(frame);
+        else (*cbGeneral)(frame);
+    }
+}
+
 ESP32CAN::ESP32CAN() : CAN_COMMON(NUM_FILTERS) 
 {
     for (int i = 0; i < NUM_FILTERS; i++)
@@ -66,6 +116,9 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
                                  //Queue size, item size
     CAN_cfg.rx_queue = xQueueCreate(32,sizeof(CAN_frame_t));
     CAN_cfg.tx_queue = xQueueCreate(16,sizeof(CAN_frame_t));
+    callbackQueue = xQueueCreate(32, sizeof(CAN_FRAME));
+              //func          desc     stack, params, priority, handle to task
+    xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     CAN_init();
 }
@@ -108,21 +161,23 @@ bool ESP32CAN::processFrame(CAN_frame_t &frame)
     msg.rtr = frame.FIR.B.RTR;
     msg.extended = frame.FIR.B.FF;
     for (int i = 0; i < 8; i++) msg.data.byte[i] = frame.data.u8[i];
-
+    
     for (int i = 0; i < NUM_FILTERS; i++)
     {
         if (!filters[i].configured) continue;
-        if ((frame.MsgID & filters[i].mask) == filters[i].id && (filters[i].extended == frame.FIR.B.FF))
+        if ((msg.id & filters[i].mask) == filters[i].id && (filters[i].extended == msg.extended))
         {
             //frame is accepted, lets see if it matches a mailbox callback
             if (cbCANFrame[i])
             {
-                (*cbCANFrame[i])(&msg);
+                msg.fid = i;
+                xQueueSendFromISR(callbackQueue, &msg, 0);
                 return true;
             }
             else if (cbGeneral)
             {
-        		(*cbGeneral)(&msg);
+                msg.fid = 0xFF;
+                xQueueSendFromISR(callbackQueue, &msg, 0);
                 return true;
             }
             else
@@ -134,12 +189,14 @@ bool ESP32CAN::processFrame(CAN_frame_t &frame)
                     {
                         if (thisListener->isCallbackActive(i)) 
 				        {
-					        thisListener->gotFrame(&msg, i);
+					        msg.fid = 0x80000000ul + (listenerPos << 24ul) + i;
+                            xQueueSendFromISR(callbackQueue, &msg, 0);
                             return true;
 				        }
 				        else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
 				        {
-					        thisListener->gotFrame(&msg, -1);
+                            msg.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
+					        xQueueSendFromISR(callbackQueue, &msg, 0);
                             return true;
 				        }
                     }

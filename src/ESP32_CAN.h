@@ -72,6 +72,7 @@ public:
   uint16_t available(); //like rx_avail but returns the number of waiting frames
   uint32_t get_rx_buff(CAN_FRAME &msg);
   bool processFrame(CAN_frame_t &frame);
+  void sendCallback(CAN_FRAME *frame);
 
 private:
   // Pin variables
@@ -79,5 +80,6 @@ private:
 };
 
 extern ESP32CAN CAN;
+extern QueueHandle_t callbackQueue;
 
 #endif
