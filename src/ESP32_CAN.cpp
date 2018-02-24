@@ -37,7 +37,7 @@ void task_CAN( void *pvParameters )
     while (1)
     {
         //receive next CAN frame from queue and fire off the callback
-        if(xQueueReceive(callbackQueue,&rxFrame, 0)==pdTRUE)
+        if(xQueueReceive(callbackQueue,&rxFrame, portMAX_DELAY)==pdTRUE)
         {
             espCan->sendCallback(&rxFrame);
         }
