@@ -26,9 +26,6 @@
  * SOFTWARE.
  *
  */
-
-#include "CAN.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
@@ -39,8 +36,9 @@
 #include "driver/gpio.h"
 
 #include "can_regdef.h"
-#include "CAN_config.h"
-#include "ESP32_CAN.h"
+#include "can_config.h"
+#include "esp32_can_builtin_lowlevel.h"
+#include "esp32_can.h"
 
 extern "C" void CAN_isr(void *arg_p)
 {
@@ -119,7 +117,7 @@ void CAN_read_frame()
         	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
-    CAN.processFrame(__frame);
+    Can0.processFrame(__frame);
 
     //Let the hardware know the frame has been read.
     MODULE_CAN->CMR.B.RRB = 1;

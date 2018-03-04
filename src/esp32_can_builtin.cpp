@@ -7,7 +7,7 @@
 */
 
 #include "Arduino.h"
-#include "ESP32_CAN.h"
+#include "esp32_can_builtin.h"
 
 CAN_device_t CAN_cfg = {
     CAN_SPEED_500KBPS,
@@ -18,6 +18,12 @@ CAN_device_t CAN_cfg = {
 };
 
 QueueHandle_t callbackQueue;
+
+ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
+{
+    CAN_cfg.rx_pin_id = rxPin;
+    CAN_cfg.tx_pin_id = txPin;
+}
 
 /*
 Issue callbacks to registered functions and objects
@@ -37,7 +43,7 @@ void task_CAN( void *pvParameters )
     while (1)
     {
         //receive next CAN frame from queue and fire off the callback
-        if(xQueueReceive(callbackQueue,&rxFrame, portMAX_DELAY)==pdTRUE)
+        if(xQueueReceive(callbackQueue, &rxFrame, portMAX_DELAY)==pdTRUE)
         {
             espCan->sendCallback(&rxFrame);
         }
@@ -117,7 +123,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
     CAN_cfg.rx_queue = xQueueCreate(32,sizeof(CAN_frame_t));
     CAN_cfg.tx_queue = xQueueCreate(16,sizeof(CAN_frame_t));
     callbackQueue = xQueueCreate(32, sizeof(CAN_FRAME));
-              //func          desc     stack, params, priority, handle to task
+              //func        desc    stack, params, priority, handle to task
     xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     CAN_init();
@@ -257,4 +263,3 @@ uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
     return false;
 }
 
-ESP32CAN CAN;

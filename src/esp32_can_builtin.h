@@ -40,10 +40,10 @@
 #include "driver/adc.h"
 #include "esp_system.h"
 #include "esp_adc_cal.h"
-#include "CAN.h"
+#include "esp32_can_builtin_lowlevel.h"
 
 //#define DEBUG_SETUP
-#define NUM_FILTERS 8
+#define NUM_FILTERS 32
 
 typedef struct
 {
@@ -56,6 +56,7 @@ typedef struct
 class ESP32CAN : public CAN_COMMON
 {
 public:
+  ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin);
   ESP32CAN();
 
   //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
@@ -79,7 +80,6 @@ private:
   ESP32_FILTER filters[NUM_FILTERS];
 };
 
-extern ESP32CAN CAN;
 extern QueueHandle_t callbackQueue;
 
 #endif

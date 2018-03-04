@@ -30,7 +30,7 @@
 #define __DRIVERS_CAN_H__
 
 #include <stdint.h>
-#include "CAN_config.h"
+#include "can_config.h"
 
 /**
  * \brief CAN frame type (standard/extended)

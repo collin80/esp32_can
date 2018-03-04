@@ -29,7 +29,7 @@
 #ifndef __DRIVERS_CAN_REGDEF_H_
 #define __DRIVERS_CAN_REGDEF_H_
 
-#include "CAN.h"	//CAN_FIR_t
+#include "esp32_can_builtin.h"	//CAN_FIR_t
 
 /** \brief Start address of CAN registers */
 #define MODULE_CAN              					((volatile CAN_Module_t    *)0x3ff6b000)

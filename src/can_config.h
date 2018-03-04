@@ -49,7 +49,7 @@ typedef struct  {
 	CAN_speed_t			speed;			/**< \brief CAN speed. */
     gpio_num_t 			tx_pin_id;		/**< \brief TX pin. */
     gpio_num_t 			rx_pin_id;		/**< \brief RX pin. */
-    QueueHandle_t 		rx_queue;		/**< \brief Handler to FreeRTOS RX queue. */
+    QueueHandle_t		rx_queue;		/**< \brief Handler to FreeRTOS RX queue. */
 	QueueHandle_t		tx_queue;		/**< \brief Handler to FreeRTOS TX queue */
 }CAN_device_t;
 
