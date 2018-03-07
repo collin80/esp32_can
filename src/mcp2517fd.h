@@ -1,0 +1,97 @@
+#ifndef MCP2517_h
+#define MCP2517_h
+
+#include "Arduino.h"
+#include "mcp2517fd_defines.h"
+#include <can_common.h>
+
+//#define DEBUG_SETUP
+#define RX_BUFFER_SIZE	32
+#define TX_BUFFER_SIZE	8  //there are three buffers though so (value * 3)
+
+#define NUM_FILTERS 32
+
+class MCP2517FD : public CAN_COMMON
+{
+  public:
+	// Constructor defining which pins to use for CS and INT
+    MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin);
+	
+	// Overloaded initialization function
+	int Init(uint32_t nominalBaud, uint8_t freq);
+	int Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW);
+	int InitFD(uint32_t nominalBaud, uint32_t dataBaud, uint8_t freq);
+
+    //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
+	int _setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended);
+    int _setFilter(uint32_t id, uint32_t mask, bool extended);
+	uint32_t init(uint32_t ul_baudrate);
+    uint32_t beginAutoSpeed();
+    uint32_t set_baudrate(uint32_t ul_baudrate);
+    void setListenOnlyMode(bool state);
+	void enable();
+	void disable();
+	bool sendFrame(CAN_FRAME& txFrame);
+	bool rx_avail();
+	uint16_t available(); //like rx_avail but returns the number of waiting frames
+	uint32_t get_rx_buff(CAN_FRAME &msg);
+	//special FD functions required to reimplement to support FD mode
+	uint32_t get_rx_buffFD(CAN_FRAME_FD &msg);
+    uint32_t set_baudrateFD(uint32_t nominalSpeed, uint32_t dataSpeed);
+    bool sendFrameFD(CAN_FRAME_FD& txFrame);
+    uint32_t initFD(uint32_t nominalRate, uint32_t dataRate);
+	
+	// Basic MCP2517FD SPI Command Set
+    void Reset();
+    uint32_t Read(uint16_t address);
+    void Read(uint16_t address, uint8_t data[], uint16_t bytes);
+	void Write8(uint16_t address, uint8_t data);
+	void Write16(uint16_t address, uint16_t data);
+	void Write(uint16_t address, uint32_t data);
+	void Write(uint16_t address, uint8_t data[], uint16_t bytes);
+	void LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message);
+	uint32_t ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message);
+	uint8_t Status();
+	uint8_t RXStatus();
+
+	// Extra functions
+	bool Interrupt();
+	bool Mode(uint8_t mode); // Returns TRUE if mode change successful
+	void setINTPin(uint8_t pin);
+	void setCSPin(uint8_t pin);
+	void EnqueueRX(CAN_FRAME_FD& newFrame);
+	void EnqueueTX(CAN_FRAME_FD& newFrame);
+	bool GetRXFrame(CAN_FRAME_FD &frame);
+	void SetRXFilter(uint8_t filter, uint32_t FilterValue, bool ext);
+	void SetRXMask(uint8_t mask, uint32_t MaskValue);
+    void GetRXFilter(uint8_t filter, uint32_t &filterVal, boolean &isExtended);
+    void GetRXMask(uint8_t mask, uint32_t &filterVal);
+
+	void InitFilters(bool permissive);
+	void intHandler();
+	void InitBuffers();
+  private:
+	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
+	bool _initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq, uint8_t sjw, bool autoBaud);
+	void commonInit();
+    void handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit);
+	bool canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest);
+	bool fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest);
+    // Pin variables
+	uint8_t _CS;
+	uint8_t _INT;
+	volatile uint32_t savedNominalBaud;
+	volatile uint32_t savedDataBaud;
+	volatile uint8_t savedFreq;
+	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
+	volatile CAN_FRAME_FD rx_frames[RX_BUFFER_SIZE];
+	volatile CAN_FRAME_FD tx_frames_low[TX_BUFFER_SIZE];
+	volatile CAN_FRAME_FD tx_frames_mid[TX_BUFFER_SIZE];
+	volatile CAN_FRAME_FD tx_frames_hi[TX_BUFFER_SIZE];
+	volatile uint8_t rx_frame_read_pos, rx_frame_write_pos;
+	volatile uint8_t tx_frame_read_pos, tx_frame_write_pos;
+};
+
+extern MCP2517FD Can1;
+
+#endif

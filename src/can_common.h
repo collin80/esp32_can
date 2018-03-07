@@ -134,8 +134,7 @@ public:
     virtual uint32_t get_rx_buffFD(CAN_FRAME_FD &msg);
     virtual uint32_t set_baudrateFD(uint32_t nominalSpeed, uint32_t dataSpeed);
     virtual bool sendFrameFD(CAN_FRAME_FD& txFrame);
-    virtual uint32_t initFD(uint32_t nominalRate, uint32_t dataRate);
-    virtual bool supportsFDMode();
+    virtual uint32_t initFD(uint32_t nominalRate, uint32_t dataRate);    
 
     //Public API common to all subclasses - don't need to be re-implemented
     //wrapper for syntactic sugar reasons
@@ -163,6 +162,7 @@ public:
     void attachCANInterrupt( void (*cb)(CAN_FRAME *) ) {setGeneralCallback(cb);}
 	void attachCANInterrupt(uint8_t mailBox, void (*cb)(CAN_FRAME *));
 	void detachCANInterrupt(uint8_t mailBox);
+    bool supportsFDMode();
 
     //pubic API for CAN-FD mode
     inline uint32_t readFD(CAN_FRAME_FD &msg) { return get_rx_buffFD(msg); }
