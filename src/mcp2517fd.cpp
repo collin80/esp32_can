@@ -45,8 +45,9 @@ void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
     int mb;
     int idx;
     CAN_FRAME stdFrame;
+    bool isFD = false;
 
-    fdToCan(*frame, stdFrame);
+    if (!fdToCan(*frame, stdFrame)) isFD = true;
 
     mb = (frame->fid & 0xFF);
     if (mb == 0xFF) mb = -1;
@@ -55,12 +56,21 @@ void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
     {
         idx = (frame->fid >> 24) & 0x7F;
         thisListener = listener[idx];
-        thisListener->gotFrame(&stdFrame, mb);
+        if (isFD) thisListener->gotFrameFD(frame, mb);
+        else thisListener->gotFrame(&stdFrame, mb);
     }
     else //C function callback
     {
-        if (mb > -1) (*cbCANFrame[mb])(&stdFrame);
-        else (*cbGeneral)(&stdFrame);
+        if (isFD)
+        {
+          if (mb > -1) (*cbCANFrameFD[mb])(frame);
+          else (*cbGeneralFD)(frame);
+        }
+        else
+        {
+          if (mb > -1) (*cbCANFrame[mb])(&stdFrame);
+          else (*cbGeneral)(&stdFrame);
+        }
     }
 }
 
@@ -953,7 +963,11 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
   }
 }
 
-//this function needs to be reworked to handle FD frames and standard frames properly.
+/*The idea here is to use the fid member (which is not normally used) as a signal to
+  downstream of the type of callback that needs to be done. 
+  The lowest 8 bits are used to pass the filter that matched (or FF if general callback)
+  If bit 31 is set then it's an object callback and the upper byte (minus that top one) are the listener position
+*/
 void MCP2517FD::handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit)
 {
   CANListener *thisListener;
