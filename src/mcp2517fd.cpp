@@ -3,13 +3,14 @@
 #include "mcp2517fd.h"
 #include "mcp2517fd_defines.h"
 #include "mcp2517fd_regs.h"
+#include <SPI.h>
 
 SPISettings canSPISettings(20000000, MSBFIRST, SPI_MODE0);
 
 QueueHandle_t	callbackQueueMCP;
 
 void MCP_INTHandler() {
-  Can1.intHandler();
+  CAN1.intHandler();
 }
 
 /*
@@ -150,6 +151,16 @@ void MCP2517FD::setCSPin(uint8_t pin)
   digitalWrite(_CS,HIGH);
 }
 
+void MCP2517FD::initSPI()
+{
+  // Set up SPI Communication
+	// dataMode can be SPI_MODE0 or SPI_MODE3 only for MCP2517FD
+  SPI.begin(SCK, MISO, MOSI, SS);
+	SPI.setClockDivider(spiFrequencyToClockDiv(20000000ul));
+	SPI.setDataMode(SPI_MODE0);
+	SPI.setBitOrder(MSBFIRST);
+}
+
 /*
   Initialize MCP2515
   
@@ -170,6 +181,9 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
   if(SJW < 1) SJW = 1;
   if(SJW > 4) SJW = 4;
   REG_CiINT interruptFlags;
+
+  initSPI();
+
   int i = 0;
   if(CAN_Bus_Speed > 0) {
     if(_init(CAN_Bus_Speed, Freq, SJW, false)) {
@@ -207,6 +221,9 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
 {
   REG_CiINT interruptFlags;
   int i = 0;
+
+  initSPI();
+
   if(nominalRate > 0) {
     if(_initFD(nominalRate, dataRate, 40, 4, false)) {
       savedNominalBaud = nominalRate;

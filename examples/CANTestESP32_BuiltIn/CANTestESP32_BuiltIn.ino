@@ -24,7 +24,7 @@ void setup() {
 
   Serial.println("Initializing ...");
 
-  Can0.begin(500000);
+  CAN0.begin(500000);
 
   Serial.println("Ready ...!");
   CAN_FRAME txFrame;
@@ -36,17 +36,17 @@ void setup() {
   txFrame.data.uint8[1] = 0x1A;
   txFrame.data.uint8[2] = 0xFF;
   txFrame.data.uint8[3] = 0x5D;
-  Can0.sendFrame(txFrame);
+  CAN0.sendFrame(txFrame);
 
-  Can0.watchFor(0x100, 0xF00); //setup a special filter
-  Can0.watchFor(); //then let everything else through anyway
-  Can0.setCallback(0, gotHundred); //callback on that first special filter
+  CAN0.watchFor(0x100, 0xF00); //setup a special filter
+  CAN0.watchFor(); //then let everything else through anyway
+  CAN0.setCallback(0, gotHundred); //callback on that first special filter
 }
 
 void loop() {
   byte i = 0;
   CAN_FRAME message;
-  if (Can0.read(message)) {
+  if (CAN0.read(message)) {
 
     printFrame(&message);
 

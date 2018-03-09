@@ -117,7 +117,7 @@ void CAN_read_frame()
         	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
-    Can0.processFrame(__frame);
+    CAN0.processFrame(__frame);
 
     //Let the hardware know the frame has been read.
     MODULE_CAN->CMR.B.RRB = 1;
