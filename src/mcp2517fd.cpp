@@ -5,11 +5,11 @@
 #include "mcp2517fd_regs.h"
 #include <SPI.h>
 
-SPISettings canSPISettings(20000000, MSBFIRST, SPI_MODE0);
+SPISettings fdSPISettings(20000000, MSBFIRST, SPI_MODE0); //20Mhz is the fastest we can go
 
 QueueHandle_t	callbackQueueMCP;
 
-void MCP_INTHandler() {
+void MCPFD_INTHandler() {
   CAN1.intHandler();
 }
 
@@ -112,7 +112,7 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   pinMode(INT_Pin,INPUT);
   digitalWrite(INT_Pin,HIGH);
 
-  attachInterrupt(INT_Pin, MCP_INTHandler, FALLING);
+  attachInterrupt(INT_Pin, MCPFD_INTHandler, FALLING);
   
   _CS = CS_Pin;
   _INT = INT_Pin;
@@ -141,7 +141,7 @@ void MCP2517FD::setINTPin(uint8_t pin)
   _INT = pin;
   pinMode(_INT,INPUT);
   digitalWrite(_INT,HIGH);
-  attachInterrupt(_INT, MCP_INTHandler, FALLING);
+  attachInterrupt(_INT, MCPFD_INTHandler, FALLING);
 }
 
 void MCP2517FD::setCSPin(uint8_t pin)
@@ -576,7 +576,7 @@ uint32_t MCP2517FD::get_rx_buffFD(CAN_FRAME_FD &msg)
 }
 
 void MCP2517FD::Reset() {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_RESET);
   digitalWrite(_CS,HIGH);
@@ -584,7 +584,7 @@ void MCP2517FD::Reset() {
 }
 
 uint32_t MCP2517FD::Read(uint16_t address) {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_READ | ((address >> 8)&0xF));
   SPI.transfer(address & 0xFF);
@@ -599,7 +599,7 @@ uint32_t MCP2517FD::Read(uint16_t address) {
 
 uint8_t MCP2517FD::Read8(uint16_t address) 
 {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_READ | ((address >> 8)&0xF));
   SPI.transfer(address & 0xFF);
@@ -611,7 +611,7 @@ uint8_t MCP2517FD::Read8(uint16_t address)
 
 uint16_t MCP2517FD::Read16(uint16_t address) 
 {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_READ | ((address >> 8)&0xF));
   SPI.transfer(address & 0xFF);
@@ -624,7 +624,7 @@ uint16_t MCP2517FD::Read16(uint16_t address)
 
 void MCP2517FD::Read(uint16_t address, uint8_t data[], uint16_t bytes) {
   // allows for sequential reading of registers starting at address - see data sheet
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_READ | ((address >> 8)&0xF));
   SPI.transfer(address & 0xFF);
@@ -638,7 +638,7 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   
   //there is no read buffer command anymore. Need to read from RAM on the chip
   //quickly read the whole thing then process it afterward
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_READ | ((address >> 8)&0xF));
   SPI.transfer(address & 0xFF);
@@ -703,7 +703,7 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
 }
 
 void MCP2517FD::Write8(uint16_t address, uint8_t data) {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );
   SPI.transfer(address & 0xFF);
@@ -713,7 +713,7 @@ void MCP2517FD::Write8(uint16_t address, uint8_t data) {
 }
 
 void MCP2517FD::Write16(uint16_t address, uint16_t data) {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );
   SPI.transfer(address & 0xFF);
@@ -723,7 +723,7 @@ void MCP2517FD::Write16(uint16_t address, uint16_t data) {
 }
 
 void MCP2517FD::Write(uint16_t address, uint32_t data) {
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );
   SPI.transfer(address & 0xFF);
@@ -735,7 +735,7 @@ void MCP2517FD::Write(uint16_t address, uint32_t data) {
 void MCP2517FD::Write(uint16_t address, uint8_t data[], uint16_t bytes) {
   // allows for sequential writing of registers starting at address - see data sheet
   uint8_t i;
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );
   SPI.transfer(address & 0xFF);
@@ -797,7 +797,7 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   }
   for (int j = 0; j < 32; j++) buffer[2 + j] = message.data.uint32[j];
 
-  SPI.beginTransaction(canSPISettings);
+  SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );  
   SPI.transfer(address & 0xFF);
