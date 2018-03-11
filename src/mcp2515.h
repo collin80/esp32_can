@@ -86,25 +86,22 @@ class MCP2515 : public CAN_COMMON
 	void SetRXMask(uint8_t mask, uint32_t MaskValue);
     void GetRXFilter(uint8_t filter, uint32_t &filterVal, boolean &isExtended);
     void GetRXMask(uint8_t mask, uint32_t &filterVal);
+	void sendCallback(CAN_FRAME *frame);
 
 	void InitFilters(bool permissive);
 	void intHandler();
-	void InitBuffers();
   private:
 	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
     void handleFrameDispatch(CAN_FRAME *frame, int filterHit);
     // Pin variables
 	uint8_t _CS;
 	uint8_t _INT;
+	QueueHandle_t	rxQueue;
+	QueueHandle_t	txQueue;
 	volatile uint16_t savedBaud;
 	volatile uint8_t savedFreq;
 	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
     // Definitions for software buffers
-	volatile CAN_FRAME rx_frames[8];
-	volatile CAN_FRAME tx_frames[8];
-	volatile uint8_t rx_frame_read_pos, rx_frame_write_pos;
-	volatile uint8_t tx_frame_read_pos, tx_frame_write_pos;
-	//void (*cbCANFrame[7])(CAN_FRAME *); //6 filters plus an optional catch all
 };
 
 #endif

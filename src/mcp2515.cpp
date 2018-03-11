@@ -36,8 +36,58 @@
 
 SPISettings mcpSPISettings(1000000, MSBFIRST, SPI_MODE0);
 
+QueueHandle_t	callbackQueueM15;
+
 void MCP_INTHandler() {
   CAN1.intHandler();
+}
+
+/*
+Issue callbacks to registered functions and objects
+Used to keep this kind of thing out of the interrupt handler
+The callback type and mailbox are passed in the fid member of the
+CAN_FRAME struct. It isn't really used by anything.
+Layout of the storage:
+bit   31 -    If set indicates an object callback
+bits  24-30 - Idx into listener table
+bits  0-7   - Mailbox number that triggered callback
+*/
+void task_MCP15( void *pvParameters )
+{
+    MCP2515* mcpCan = (MCP2515*)pvParameters;
+    CAN_FRAME rxFrame;
+
+    while (1)
+    {
+        //receive next CAN frame from queue and fire off the callback
+        if(xQueueReceive(callbackQueueM15, &rxFrame, portMAX_DELAY)==pdTRUE)
+        {
+            mcpCan->sendCallback(&rxFrame);
+        }
+    }
+}
+
+void MCP2515::sendCallback(CAN_FRAME *frame)
+{
+    //frame buffer
+    CANListener *thisListener;
+    int mb;
+    int idx;
+
+    mb = (frame->fid & 0xFF);
+    if (mb == 0xFF) mb = -1;
+
+    if (frame->fid & 0x80000000ul) //object callback
+    {
+        idx = (frame->fid >> 24) & 0x7F;
+        thisListener = listener[idx];
+        thisListener->gotFrame(frame, mb);
+    }
+    else //C function callback
+    {
+        if (mb > -1) (*cbCANFrame[mb])(frame);
+        else (*cbGeneral)(frame);
+    }
 }
 
 MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
@@ -54,7 +104,12 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
   savedBaud = 0;
   savedFreq = 0;
   running = 0; 
-  InitBuffers();
+  rxQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+	txQueue = xQueueCreate(8, sizeof(CAN_FRAME));
+  callbackQueueM15 = xQueueCreate(8, sizeof(CAN_FRAME));
+
+                  //func        desc    stack, params, priority, handle to task
+  xTaskCreate(&task_MCP15, "CAN_RX_M15", 2048, this, 5, NULL);
 }
 
 void MCP2515::setINTPin(uint8_t pin)
@@ -72,14 +127,6 @@ void MCP2515::setCSPin(uint8_t pin)
   pinMode(_CS, OUTPUT);
   digitalWrite(_CS,HIGH);
 }
-
-//set all buffer counters to zero to reset them
-void MCP2515::InitBuffers() {
-  rx_frame_read_pos = 0;
-  rx_frame_write_pos = 0;
-  tx_frame_read_pos = 0;
-  tx_frame_write_pos = 0;
-}  
 
 /*
   Initialize MCP2515
@@ -295,11 +342,7 @@ bool MCP2515::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool auto
 
 uint16_t MCP2515::available()
 {
-	int val;
-	val = rx_frame_read_pos - rx_frame_write_pos;
-	//Now, because this is a cyclic buffer it is possible that the ordering was reversed
-	//So, handle that case
-	if (val < 0) val += 8;
+  return uxQueueMessagesWaiting(rxQueue);
 }
 
 int MCP2515::_setFilter(uint32_t id, uint32_t mask, bool extended)
@@ -771,13 +814,7 @@ void MCP2515::GetRXMask(uint8_t mask, uint32_t &filterVal)
 
 //Places the given frame into the receive queue
 void MCP2515::EnqueueRX(CAN_FRAME& newFrame) {
-	uint8_t counter;
-	rx_frames[rx_frame_write_pos].id = newFrame.id;
-	rx_frames[rx_frame_write_pos].rtr = newFrame.rtr;
-	rx_frames[rx_frame_write_pos].extended = newFrame.extended;
-	rx_frames[rx_frame_write_pos].length = newFrame.length;
-	for (counter = 0; counter < 8; counter++) rx_frames[rx_frame_write_pos].data.byte[counter] = newFrame.data.byte[counter];
-	rx_frame_write_pos = (rx_frame_write_pos + 1) % 8;
+  xQueueSendFromISR(rxQueue, &newFrame, NULL);
 }
 
 //Places the given frame into the transmit queue
@@ -808,29 +845,13 @@ void MCP2515::EnqueueTX(CAN_FRAME& newFrame) {
 		}
 	}
 	else { //hardware is busy. queue it in software
-		if (tx_frame_write_pos != tx_frame_read_pos) { //don't add another frame if the buffer is already full
-			tx_frames[tx_frame_write_pos].id = newFrame.id;
-			tx_frames[tx_frame_write_pos].rtr = newFrame.rtr;
-			tx_frames[tx_frame_write_pos].extended = newFrame.extended;
-			tx_frames[tx_frame_write_pos].length = newFrame.length;
-			for (counter = 0; counter < 8; counter++) tx_frames[tx_frame_write_pos].data.byte[counter] = newFrame.data.byte[counter];
-			tx_frame_write_pos = (tx_frame_write_pos + 1) % 8;
-		}		
+    xQueueSend(txQueue, &newFrame, 0);
 	}		
 }
 
 bool MCP2515::GetRXFrame(CAN_FRAME &frame) {
-	uint8_t counter;
-	if (rx_frame_read_pos != rx_frame_write_pos) {
-		frame.id = rx_frames[rx_frame_read_pos].id;
-		frame.rtr = rx_frames[rx_frame_read_pos].rtr;
-		frame.extended = rx_frames[rx_frame_read_pos].extended;
-		frame.length = rx_frames[rx_frame_read_pos].length;
-		for (counter = 0; counter < 8; counter++) frame.data.byte[counter] = rx_frames[rx_frame_read_pos].data.byte[counter];
-		rx_frame_read_pos = (rx_frame_read_pos + 1) % 8;
-		return true;
-	}
-	else return false;
+  if (xQueueReceive(rxQueue, &frame, 0) == pdTRUE) return true;
+	return false;
 }
 
 void MCP2515::intHandler(void) {
@@ -841,41 +862,44 @@ void MCP2515::intHandler(void) {
     //Now, acknowledge the interrupts by clearing the intf bits
     Write(CANINTF, 0); 	
     
-    if(interruptFlags & RX0IF) {
+    if(interruptFlags & RX0IF)
+    {
       // read from RX buffer 0
-		message = ReadBuffer(RXB0);
-        ctrlVal = Read(RXB0CTRL);
-        handleFrameDispatch(&message, ctrlVal & 1);
+      message = ReadBuffer(RXB0);
+      ctrlVal = Read(RXB0CTRL);
+      handleFrameDispatch(&message, ctrlVal & 1);
     }
-    if(interruptFlags & RX1IF) {
-        // read from RX buffer 1
-        message = ReadBuffer(RXB1);
-        ctrlVal = Read(RXB1CTRL);
-        handleFrameDispatch(&message, ctrlVal & 7);
+    if(interruptFlags & RX1IF)
+    {
+      // read from RX buffer 1
+      message = ReadBuffer(RXB1);
+      ctrlVal = Read(RXB1CTRL);
+      handleFrameDispatch(&message, ctrlVal & 7);
     }
-    if(interruptFlags & TX0IF) {
-		// TX buffer 0 sent
-       if (tx_frame_read_pos != tx_frame_write_pos) {
-			LoadBuffer(TXB0, (CAN_FRAME *)&tx_frames[tx_frame_read_pos]);
+    if(interruptFlags & TX0IF)
+    {
+		  // TX buffer 0 sent
+      if (uxQueueMessagesWaiting(txQueue)) {
+        xQueueReceiveFromISR(txQueue, &message, 0);
+			  LoadBuffer(TXB0, &message);
 		   	SendBuffer(TXB0);
-			tx_frame_read_pos = (tx_frame_read_pos + 1) % 8;
-	   }
+	    }
     }
-    if(interruptFlags & TX1IF) {
-		// TX buffer 1 sent
-	  if (tx_frame_read_pos != tx_frame_write_pos) {
-		  LoadBuffer(TXB1, (CAN_FRAME *)&tx_frames[tx_frame_read_pos]);
-		  SendBuffer(TXB1);
-		  tx_frame_read_pos = (tx_frame_read_pos + 1) % 8;
-	  }
+    if(interruptFlags & TX1IF) 
+    {
+      if (uxQueueMessagesWaiting(txQueue)) {
+        xQueueReceiveFromISR(txQueue, &message, 0);
+			  LoadBuffer(TXB1, &message);
+		   	SendBuffer(TXB1);
+	    }
     }
-    if(interruptFlags & TX2IF) {
-		// TX buffer 2 sent
-		if (tx_frame_read_pos != tx_frame_write_pos) {
-			LoadBuffer(TXB2, (CAN_FRAME *)&tx_frames[tx_frame_read_pos]);
-			SendBuffer(TXB2);
-			tx_frame_read_pos = (tx_frame_read_pos + 1) % 8;
-		}
+    if(interruptFlags & TX2IF) 
+    {
+      if (uxQueueMessagesWaiting(txQueue)) {
+        xQueueReceiveFromISR(txQueue, &message, 0);
+			  LoadBuffer(TXB2, &message);
+		   	SendBuffer(TXB2);
+	    }
     }
     if(interruptFlags & ERRIF) {
       if (running == 1) { //if there was an error and we had been initialized then try to fix it by reinitializing
@@ -898,18 +922,20 @@ void MCP2515::intHandler(void) {
 
 void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 {
-    CANListener *thisListener;
+  CANListener *thisListener;
 
-    //First, try to send a callback. If no callback registered then buffer the frame.
-    if (cbCANFrame[filterHit]) 
+  //First, try to send a callback. If no callback registered then buffer the frame.
+  if (cbCANFrame[filterHit]) 
 	{
-		(*cbCANFrame[filterHit])(frame);
-        return;
+    frame->fid = filterHit;
+    xQueueSendFromISR(callbackQueueM15, frame, 0);
+    return;
 	}
 	else if (cbGeneral) 
 	{
-		(*cbGeneral)(frame);
-        return;
+    frame->fid = 0xFF;
+    xQueueSendFromISR(callbackQueueM15, frame, 0);
+    return;
 	}
 	else
 	{
@@ -920,17 +946,19 @@ void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 			{
 				if (thisListener->isCallbackActive(filterHit)) 
 				{
-					thisListener->gotFrame(frame, filterHit);
-                    return;
+					frame->fid = 0x80000000ul + (listenerPos << 24ul) + filterHit;
+          xQueueSendFromISR(callbackQueueM15, frame, 0);
+          return;
 				}
 				else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
 				{
-					thisListener->gotFrame(frame, -1);
-                    return;
+					frame->fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
+          xQueueSendFromISR(callbackQueueM15, frame, 0);
+          return;
 				}
 			}
 		}
-	}
+	} 
 	//if none of the callback types caught this frame then queue it in the buffer
-    EnqueueRX(*frame);
+  xQueueSendFromISR(rxQueue, frame, NULL);
 }
