@@ -34,12 +34,15 @@
 #include "mcp2515_defs.h"
 #include "esp32_can.h"
 
-SPISettings mcpSPISettings(1000000, MSBFIRST, SPI_MODE0);
+SPISettings mcpSPISettings(10000000, MSBFIRST, SPI_MODE0);
+
+static TaskHandle_t intDelegateTask = NULL;
 
 QueueHandle_t	callbackQueueM15;
 
 void MCP_INTHandler() {
-  CAN1.intHandler();
+  xTaskNotifyGive( intDelegateTask ); //send notice to the handler task that it can do the SPI transaction now
+  //Serial.write('@');
 }
 
 /*
@@ -65,6 +68,16 @@ void task_MCP15( void *pvParameters )
             mcpCan->sendCallback(&rxFrame);
         }
     }
+}
+
+void task_MCPInt15( void *pvParameters )
+{
+  while (1)
+  {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
+    //Serial.write('!');
+    CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
+  }
 }
 
 void MCP2515::sendCallback(CAN_FRAME *frame)
@@ -108,8 +121,9 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
 	txQueue = xQueueCreate(8, sizeof(CAN_FRAME));
   callbackQueueM15 = xQueueCreate(8, sizeof(CAN_FRAME));
 
-                  //func        desc    stack, params, priority, handle to task
-  xTaskCreate(&task_MCP15, "CAN_RX_M15", 2048, this, 5, NULL);
+                            //func        desc    stack, params, priority, handle to task, core to pin to
+  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 2048, this, 5, NULL, 1);
+  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 2048, this, 5, &intDelegateTask, 1);
 }
 
 void MCP2515::setINTPin(uint8_t pin)
@@ -213,7 +227,7 @@ int MCP2515::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
 bool MCP2515::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool autoBaud) {
 
   SPI.begin(SCK, MISO, MOSI, SS);       //Set up Serial Peripheral Interface Port for CAN2
-  SPI.setClockDivider(SPI_CLOCK_DIV16);
+  SPI.setClockDivider(SPI_CLOCK_DIV32);
   SPI.setDataMode(SPI_MODE0);
   SPI.setBitOrder(MSBFIRST);
   
