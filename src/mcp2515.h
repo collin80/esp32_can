@@ -101,6 +101,7 @@ class MCP2515 : public CAN_COMMON
 	volatile uint16_t savedBaud;
 	volatile uint8_t savedFreq;
 	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
+	volatile bool inhibitTransactions;
     // Definitions for software buffers
 };
 

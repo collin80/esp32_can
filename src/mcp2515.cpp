@@ -41,7 +41,9 @@ static TaskHandle_t intDelegateTask = NULL;
 QueueHandle_t	callbackQueueM15;
 
 void MCP_INTHandler() {
-  vTaskNotifyGiveFromISR(intDelegateTask, NULL); //send notice to the handler task that it can do the SPI transaction now
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(intDelegateTask, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
+  if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
 }
 
 /*
@@ -115,13 +117,14 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
   savedBaud = 0;
   savedFreq = 0;
   running = 0; 
-  rxQueue = xQueueCreate(16, sizeof(CAN_FRAME));
-	txQueue = xQueueCreate(8, sizeof(CAN_FRAME));
-  callbackQueueM15 = xQueueCreate(8, sizeof(CAN_FRAME));
+  inhibitTransactions = false;
+  rxQueue = xQueueCreate(32, sizeof(CAN_FRAME));
+	txQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+  callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
-  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 2048, this, 3, NULL, 1);
-  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 2048, this, 10, &intDelegateTask, 1);
+  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 2048, this, 3, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 2048, this, 10, &intDelegateTask, 0);
 }
 
 void MCP2515::setINTPin(uint8_t pin)
@@ -465,28 +468,28 @@ uint32_t MCP2515::get_rx_buff(CAN_FRAME &msg)
 }
 
 void MCP2515::Reset() {
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_RESET);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 uint8_t MCP2515::Read(uint8_t address) {
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_READ);
   SPI.transfer(address);
   uint8_t data = SPI.transfer(0x00);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
   return data;
 }
 
 void MCP2515::Read(uint8_t address, uint8_t data[], uint8_t bytes) {
   // allows for sequential reading of registers starting at address - see data sheet
   uint8_t i;
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_READ);
   SPI.transfer(address);
@@ -494,7 +497,7 @@ void MCP2515::Read(uint8_t address, uint8_t data[], uint8_t bytes) {
     data[i] = SPI.transfer(0x00);
   }
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 CAN_FRAME MCP2515::ReadBuffer(uint8_t buffer) {
@@ -504,7 +507,7 @@ CAN_FRAME MCP2515::ReadBuffer(uint8_t buffer) {
   
   CAN_FRAME message;
   
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_READ_BUFFER | (buffer<<1));
   uint8_t byte1 = SPI.transfer(0x00); // RXBnSIDH
@@ -530,25 +533,25 @@ CAN_FRAME MCP2515::ReadBuffer(uint8_t buffer) {
     message.data.byte[i] = SPI.transfer(0x00);
   }
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 
   return message;
 }
 
 void MCP2515::Write(uint8_t address, uint8_t data) {
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_WRITE);
   SPI.transfer(address);
   SPI.transfer(data);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 void MCP2515::Write(uint8_t address, uint8_t data[], uint8_t bytes) {
   // allows for sequential writing of registers starting at address - see data sheet
   uint8_t i;
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_WRITE);
   SPI.transfer(address);
@@ -556,16 +559,16 @@ void MCP2515::Write(uint8_t address, uint8_t data[], uint8_t bytes) {
     SPI.transfer(data[i]);
   }
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 void MCP2515::SendBuffer(uint8_t buffers) {
   // buffers should be any combination of TXB0, TXB1, TXB2 ORed together, or TXB_ALL
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_RTS | buffers);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 void MCP2515::LoadBuffer(uint8_t buffer, CAN_FRAME *message) {
@@ -597,7 +600,7 @@ void MCP2515::LoadBuffer(uint8_t buffer, CAN_FRAME *message) {
     byte5 = byte5 | B01000000;
   }
   
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_LOAD_BUFFER | buffer);  
   SPI.transfer(byte1);
@@ -610,16 +613,16 @@ void MCP2515::LoadBuffer(uint8_t buffer, CAN_FRAME *message) {
     SPI.transfer(message->data.byte[i]);
   }
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 uint8_t MCP2515::Status() {
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_STATUS);
   uint8_t data = SPI.transfer(0x00);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
   return data;
   /*
   bit 7 - CANINTF.TX2IF
@@ -634,12 +637,12 @@ uint8_t MCP2515::Status() {
 }
 
 uint8_t MCP2515::RXStatus() {
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_RX_STATUS);
   uint8_t data = SPI.transfer(0x00);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
   return data;
   /*
   bit 7 - CANINTF.RX1IF
@@ -662,14 +665,14 @@ uint8_t MCP2515::RXStatus() {
 
 void MCP2515::BitModify(uint8_t address, uint8_t mask, uint8_t data) {
   // see data sheet for explanation
-  SPI.beginTransaction(mcpSPISettings);
+  if (!inhibitTransactions) SPI.beginTransaction(mcpSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CAN_BIT_MODIFY);
   SPI.transfer(address);
   SPI.transfer(mask);
   SPI.transfer(data);
   digitalWrite(_CS,HIGH);
-  SPI.endTransaction();
+  if (!inhibitTransactions) SPI.endTransaction();
 }
 
 bool MCP2515::Interrupt() {
@@ -834,31 +837,10 @@ void MCP2515::EnqueueRX(CAN_FRAME& newFrame) {
 //it will place it into hardware immediately instead of using
 //the software queue
 void MCP2515::EnqueueTX(CAN_FRAME& newFrame) {
-	uint8_t counter;
-	uint8_t status = Status() & 0b01010100; //mask for only the transmit buffer empty bits
-	
-	//don't allow sending or queueing of frames if we're not properly initialized
-	if (running == 0) {
-		return;
-	}
-		
-	if (status != 0b01010100) { //found an open slot
-		if ((status & 0b00000100) == 0) { //transmit buffer 0 is open
-			LoadBuffer(TXB0, &newFrame);
-			SendBuffer(TXB0);
-		}
-		else if ((status & 0b00010000) == 0) { //transmit buffer 1 is open
-			LoadBuffer(TXB1, &newFrame);
-			SendBuffer(TXB1);
-		}
-		else { // must have been buffer 2 then.
-			LoadBuffer(TXB2, &newFrame);
-			SendBuffer(TXB2);
-		}
-	}
-	else { //hardware is busy. queue it in software
-    xQueueSend(txQueue, &newFrame, 0);
-	}		
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  xQueueSend(txQueue, &newFrame, 0);
+  xHigherPriorityTaskWoken = xTaskNotifyGive(intDelegateTask); //send notice to the handler task that it can do the SPI transaction now
+  //if (xHigherPriorityTaskWoken == pdTRUE) 
 }
 
 bool MCP2515::GetRXFrame(CAN_FRAME &frame) {
@@ -869,67 +851,73 @@ bool MCP2515::GetRXFrame(CAN_FRAME &frame) {
 void MCP2515::intHandler(void) {
     CAN_FRAME message;
     uint32_t ctrlVal;
+    inhibitTransactions = true;
+    SPI.beginTransaction(mcpSPISettings);
     // determine which interrupt flags have been set
     uint8_t interruptFlags = Read(CANINTF);
-    //Now, acknowledge the interrupts by clearing the intf bits
-    Write(CANINTF, 0); 	
+    uint8_t status = Status();
+    //Serial.println(status);
+      /*
+  bit 7 - CANINTF.TX2IF             128
+  bit 6 - TXB2CNTRL.TXREQ           64
+  bit 5 - CANINTF.TX1IF             32
+  bit 4 - TXB1CNTRL.TXREQ           16
+  bit 3 - CANINTF.TX0IF             8
+  bit 2 - TXB0CNTRL.TXREQ           4
+  bit 1 - CANINTF.RX1IF            2
+  bit 0 - CANINTF.RX0IF             1
+  */
     
-    if(interruptFlags & RX0IF)
+    if((status & 1)) //RX buff 0 full
     {
       // read from RX buffer 0
       message = ReadBuffer(RXB0);
       ctrlVal = Read(RXB0CTRL);
       handleFrameDispatch(&message, ctrlVal & 1);
     }
-    if(interruptFlags & RX1IF)
+    if((status & 2)) //RX buff 1 full
     {
       // read from RX buffer 1
       message = ReadBuffer(RXB1);
       ctrlVal = Read(RXB1CTRL);
       handleFrameDispatch(&message, ctrlVal & 7);
     }
-    if(interruptFlags & TX0IF)
+    if((status & 4) == 0) //TX buffer 0 is not pending a transaction
     {
-		  // TX buffer 0 sent
-      if (uxQueueMessagesWaiting(txQueue)) {
+      if (uxQueueMessagesWaitingFromISR(txQueue)) {
         xQueueReceiveFromISR(txQueue, &message, 0);
 			  LoadBuffer(TXB0, &message);
 		   	SendBuffer(TXB0);
 	    }
     }
-    if(interruptFlags & TX1IF) 
+    if((status & 16) == 0) //TX buffer 1 not pending any message to send 
     {
-      if (uxQueueMessagesWaiting(txQueue)) {
+      if (uxQueueMessagesWaitingFromISR(txQueue)) {
         xQueueReceiveFromISR(txQueue, &message, 0);
 			  LoadBuffer(TXB1, &message);
 		   	SendBuffer(TXB1);
 	    }
     }
-    if(interruptFlags & TX2IF) 
+    if((status & 64) == 0) //TX buffer 2 not pending any message to send 
     {
-      if (uxQueueMessagesWaiting(txQueue)) {
+      if (uxQueueMessagesWaitingFromISR(txQueue)) {
         xQueueReceiveFromISR(txQueue, &message, 0);
 			  LoadBuffer(TXB2, &message);
 		   	SendBuffer(TXB2);
 	    }
     }
     if(interruptFlags & ERRIF) {
-      if (running == 1) { //if there was an error and we had been initialized then try to fix it by reinitializing
-		  running = 0;
-		  //InitBuffers();
-		  //Init(savedBaud, savedFreq);
-	  }
+      //Serial.println("E");
     }
     if(interruptFlags & MERRF) {
-      // error handling code
-      // if TXBnCTRL.TXERR set then transmission error
-      // if message is lost TXBnCTRL.MLOA will be set
-      if (running == 1) { //if there was an error and we had been initialized then try to fix it by reinitializing
-		running = 0;
-		//InitBuffers();
-		//Init(savedBaud, savedFreq);
-	  }	  
+      //Serial.println("M");
     }
+
+    Write(CANINTF, 0); //Now, acknowledge the interrupts by clearing the intf bits
+    Write(EFLG, 0); //clear RX overflow flags
+
+    inhibitTransactions = false;
+    SPI.endTransaction();
 }
 
 void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)

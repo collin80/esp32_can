@@ -8,9 +8,21 @@
 SPISettings fdSPISettings(20000000, MSBFIRST, SPI_MODE0); //20Mhz is the fastest we can go
 
 QueueHandle_t	callbackQueueMCP;
+static TaskHandle_t intTaskFD = NULL;
 
 void MCPFD_INTHandler() {
-  CAN1.intHandler();
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(intTaskFD, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
+  if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
+}
+
+void task_MCPIntFD( void *pvParameters )
+{
+  while (1)
+  {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
+    CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
+  }
 }
 
 /*
@@ -38,7 +50,6 @@ void task_MCPCAN( void *pvParameters )
     }
 }
 
-//TODO; Must be modified to support figuring out whether frame is FD or not and sending to appropriate callbacks accordingly
 void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
 {
     //frame buffer
@@ -132,7 +143,8 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   //TODO: Both versions should be pinned to application processor so we don't get cross-thread issues
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                   //func        desc    stack, params, priority, handle to task
-  xTaskCreate(&task_MCPCAN, "CAN_RX_MCP", 2048, this, 5, NULL);
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 2048, this, 3, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 10, &intTaskFD, 0);
 }
 
 void MCP2517FD::setINTPin(uint8_t pin)
