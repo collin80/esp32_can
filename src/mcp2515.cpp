@@ -323,6 +323,8 @@ bool MCP2515::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool auto
 
   Write(CNF1, data);
   delay(1);
+
+  InitFilters(false);
   
   if(!autoBaud) {
     // Return to Normal mode
@@ -368,7 +370,7 @@ int MCP2515::_setFilter(uint32_t id, uint32_t mask, bool extended)
     for (int i = 0; i < 6; i++)
     {
         GetRXFilter(i, filterVal, isExtended);
-        if (filterVal == 0) //empty filter. Let's fill it and leave
+        if (filterVal == 0 && isExtended == extended) //empty filter. Let's fill it and leave
         {
             if (i < 2)
             {
@@ -701,24 +703,25 @@ bool MCP2515::Mode(byte mode) {
 //thereafter 
 */
 void MCP2515::InitFilters(bool permissive) {
-	uint32_t value;
-	uint32_t value32;
-	if (permissive) {
-		value = 0;
-        value32 = 0;
-	}	
-	else {
-		value = 0x7FF; //all 11 bits set
-        value32 = 0x1FFFFFFF; //all 29 bits set
-	}
-	SetRXMask(MASK0, value32);
-	SetRXMask(MASK1, value);
-	SetRXFilter(FILTER0, value32, 1);
-	SetRXFilter(FILTER1, value32, 1);
-	SetRXFilter(FILTER2, value, 0);
-	SetRXFilter(FILTER3, value, 0);
-	SetRXFilter(FILTER4, value, 0);
-	SetRXFilter(FILTER5, value, 0);
+  uint32_t value;
+  uint32_t value32;
+  if (permissive) {
+    value = 0;
+    value32 = 0;
+  }	
+  else 
+  {
+    value = 0x7FF; //all 11 bits set
+    value32 = 0x1FFFFFFF; //all 29 bits set
+  }
+  SetRXMask(MASK0, value32);
+  SetRXMask(MASK1, value);
+  SetRXFilter(FILTER0, 0, 1);
+  SetRXFilter(FILTER1, 0, 1);
+  SetRXFilter(FILTER2, 0, 0);
+  SetRXFilter(FILTER3, 0, 0);
+  SetRXFilter(FILTER4, 0, 0);
+  SetRXFilter(FILTER5, 0, 0);
 }
 
 /*
@@ -732,12 +735,12 @@ void MCP2515::SetRXMask(uint8_t mask, uint32_t MaskValue) {
 	
 	oldMode = Read(CANSTAT);
 	Mode(MODE_CONFIG); //have to be in config mode to change mask
-	
-    temp_buff[0] = byte((MaskValue << 3) >> 24);
-	temp_buff[1] = byte((MaskValue << 11) >> 24) & B11100000;
-	temp_buff[1] |= byte((MaskValue << 14) >> 30);
-	temp_buff[2] = byte((MaskValue << 16)>>24);
-	temp_buff[3] = byte((MaskValue << 24)>>24);
+
+	temp_buff[0] = byte(MaskValue >> 3);
+	temp_buff[1] = byte((MaskValue & 7)  << 5);
+  temp_buff[1] |= byte(MaskValue >> 27);
+	temp_buff[2] = byte(MaskValue >> 19);
+	temp_buff[3] = byte(MaskValue >> 11);
 	
 	Write(mask, temp_buff, 4); //send the four byte mask out to the proper address
 	
@@ -758,20 +761,16 @@ void MCP2515::SetRXFilter(uint8_t filter, uint32_t FilterValue, bool ext) {
 	oldMode = Read(CANSTAT);
 
 	Mode(MODE_CONFIG); //have to be in config mode to change mask
-	
+	temp_buff[0] = byte(FilterValue >> 3);
+	temp_buff[1] = byte((FilterValue & 7)  << 5);
+	temp_buff[2] = 0;
+	temp_buff[3] = 0;
+
 	if (ext) { //fill out all 29 bits
-		temp_buff[0] = byte((FilterValue << 3) >> 24);
-		temp_buff[1] = byte((FilterValue << 11) >> 24) & B11100000;
-		temp_buff[1] |= byte((FilterValue << 14) >> 30);
-		temp_buff[1] |= B00001000; //set EXIDE
-		temp_buff[2] = byte((FilterValue << 16)>>24);
-		temp_buff[3] = byte((FilterValue << 24)>>24);
-	}
-	else { //make sure to set mask as 11 bit standard mask
-		temp_buff[0] = byte((FilterValue << 21)>>24);
-		temp_buff[1] = byte((FilterValue << 29) >> 24) & B11100000;
-		temp_buff[2] = 0;
-		temp_buff[3] = 0;
+    temp_buff[1] |= 1 << 3; //set EXIDE
+    temp_buff[1] |= byte(FilterValue >> 27);
+		temp_buff[2] = byte(FilterValue >> 19);
+		temp_buff[3] = byte(FilterValue >> 11);
 	}
 	
 	Write(filter, temp_buff, 4); //send the four byte mask out to the proper address
@@ -808,20 +807,20 @@ void MCP2515::GetRXFilter(uint8_t filter, uint32_t &filterVal, boolean &isExtend
 
 void MCP2515::GetRXMask(uint8_t mask, uint32_t &filterVal)
 {
-    uint8_t temp_buff[4];
+  uint8_t temp_buff[4];
 	uint8_t oldMode;
-		
+
 	oldMode = Read(CANSTAT);
 
 	Mode(MODE_CONFIG); //have to be in config mode to change mask
 
-    Read(mask, temp_buff, 4);
+  Read(mask, temp_buff, 4);
 
-    filterVal = temp_buff[0] << 3;
-    filterVal |= temp_buff[1] >> 5;
-    filterVal |= (temp_buff[1] & 3) << 27;
-    filterVal |= temp_buff[2] << 19;
-    filterVal |= temp_buff[3] << 11;
+  filterVal = temp_buff[0] << 3;
+  filterVal |= temp_buff[1] >> 5;
+  filterVal |= (temp_buff[1] & 3) << 27;
+  filterVal |= temp_buff[2] << 19;
+  filterVal |= temp_buff[3] << 11;
 
 	Mode(oldMode);
 }
