@@ -25,6 +25,12 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     CAN_cfg.tx_pin_id = txPin;
 }
 
+void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
+{
+    CAN_cfg.rx_pin_id = rxPin;
+    CAN_cfg.tx_pin_id = txPin;
+}
+
 /*
 Issue callbacks to registered functions and objects
 Used to keep this kind of thing out of the interrupt handler
