@@ -81,16 +81,17 @@ typedef union {
     uint8_t bytes[8];
     uint8_t byte[8]; //alternate name so you can omit the s if you feel it makes more sense
     struct {
-        uint64_t bitField;
+        uint8_t bitField[8];
         const bool operator[]( int pos ) const
         {
             if (pos < 0 || pos > 63) return 0;
-            return (bitField >> pos) & 1;
+            int bitFieldIdx = pos / 8;
+            return (bitField[bitFieldIdx] >> pos) & 1;
         }
         BitRef operator[]( int pos )
         {
-            if (pos < 0 || pos > 63) return BitRef((uint8_t *)&bitField, 0);
-            uint8_t *ptr = (uint8_t *)&bitField; 
+            if (pos < 0 || pos > 63) return BitRef((uint8_t *)&bitField[0], 0);
+            uint8_t *ptr = (uint8_t *)&bitField[0]; 
             return BitRef(ptr + (pos / 8), pos & 7);
         }
     } bit;
@@ -101,6 +102,26 @@ typedef union {
     uint32_t uint32[16]; 
     uint16_t uint16[32];
     uint8_t  uint8[64];
+    int64_t int64[8];
+    int32_t int32[16]; 
+    int16_t int16[32];
+    int8_t  int8[64];
+
+    struct {
+        uint64_t bitField[64];
+        const bool operator[]( int pos ) const
+        {
+            if (pos < 0 || pos > 319) return 0;
+            int bitfieldIdx = pos / 8;
+            return (bitField[bitfieldIdx] >> pos) & 1;
+        }
+        BitRef operator[]( int pos )
+        {
+            if (pos < 0 || pos > 319) return BitRef((uint8_t *)&bitField[0], 0);
+            uint8_t *ptr = (uint8_t *)&bitField[0]; 
+            return BitRef(ptr + (pos / 8), pos & 7);
+        }
+    } bit;
 } BytesUnion_FD;
 
 class CAN_FRAME
