@@ -278,18 +278,21 @@ void MCP2517FD::commonInit()
   REG_CiFIFOCON fifoCon;
   REG_CiTSCON tsCon;
 
+  //transmit queue set up
   txQCon.word = 0;
   txQCon.txBF.PayLoadSize = 7; //64 bytes
   txQCon.txBF.FifoSize = 2; //3 frame long FIFO
-  txQCon.txBF.TxAttempts = 1; //3 attempts then quit
+  txQCon.txBF.TxAttempts = 2; //3 attempts then quit
   txQCon.txBF.TxPriority = 15; //middle priority
   txQCon.txBF.TxEmptyIE = 1; //enable interrupt for empty FIFO
   Write(ADDR_CiTXQCON, txQCon.word);
 
+  //builtin timerstamping setup
   tsCon.bF.TBCPrescaler = 39; //40x slow down means 1us resolution
   tsCon.bF.TBCEnable = 1;
   Write(ADDR_CiTSCON ,tsCon.word);
 
+  //Now set up each FIFO we're going to use (transmit queue is technically FIFO0)
   fifoCon.txBF.TxEnable = 1; //Make FIFO1 a TX FIFO
   fifoCon.txBF.TxPriority = 0;
   fifoCon.txBF.FifoSize = 2; //3 frames long
@@ -301,13 +304,14 @@ void MCP2517FD::commonInit()
   fifoCon.txBF.TxPriority = 31;
   Write(ADDR_CiFIFOCON + (CiFIFO_OFFSET * 2), fifoCon.word); //Write to FIFO2
 
+  //Last FIFO we'll set up is receive fifo
   fifoCon.word = 0; //clear it all out to start fresh
   fifoCon.rxBF.TxEnable = 0; //Make FIFO3 a RX FIFO
   fifoCon.rxBF.FifoSize = 17; //18 frames long
   fifoCon.rxBF.PayLoadSize = 7; //64 byte payload possible
   fifoCon.rxBF.RxFullIE = 1; //if the FIFO fills up let the code know (hopefully never happens!)
   fifoCon.rxBF.RxNotEmptyIE = 1; //if the FIFO isn't empty let the code know 
-  fifoCon.rxBF.RxTimeStampEnable = 1;
+  fifoCon.rxBF.RxTimeStampEnable = 1; //time stamp each frame as it comes in
   Write(ADDR_CiFIFOCON + (CiFIFO_OFFSET * 3), fifoCon.word); //Write to FIFO3
 }
 
@@ -409,15 +413,15 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     plan to be in FD mode it is best if the baud rate generator uses the same prescaler for both
     the nominal and data rates. So, this is forced to a prescaler of 1 for both. This gives the
     best resolution and results for FD mode. As such, you can't use a baud rate under 125k or
-    this routine will die. If you need less than 125k you aren't using FD mode and should be using
-    the non-FD routines.
+    this routine will die. If you need less than 125k you probably aren't using FD mode and should 
+    be using the non-FD routines.
   */
   // Set registers
   nominalCfg.bF.SJW = sjw;
   neededTQ = (freq * 1000000ul) / nominalSpeed;
   nominalCfg.bF.TSEG1 = ((neededTQ * 8) / 10) - 1; //set sample point at 80%
   nominalCfg.bF.TSEG2 = (neededTQ - nominalCfg.bF.TSEG1) - 1;
-  nominalCfg.bF.BRP = 0;
+  nominalCfg.bF.BRP = 0; //baud rate prescaler. 0 = 1x prescale
 
   /*As above, we lock the prescaler at 1x and figure out the Seg1/Seg2 based on that.
   */
@@ -500,7 +504,7 @@ int MCP2517FD::_setFilter(uint32_t id, uint32_t mask, bool extended)
     return -1;
 }
 
-//we don't exactly have mailboxes, we have filters (6 of them) but it's the same basic idea
+//we've got 32 filters each with their own mask.
 int MCP2517FD::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
 {
   if (mailbox > 31) return 0; //past end of valid mailbox #said
@@ -598,7 +602,7 @@ void MCP2517FD::Reset() {
 uint32_t MCP2517FD::Read(uint16_t address) {
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
-  SPI.transfer(CMD_READ | ((address >> 8)&0xF));
+  SPI.transfer(CMD_READ | ( (address >> 8) & 0xF) );
   SPI.transfer(address & 0xFF);
   uint32_t data = SPI.transfer(0x00);
   data += (SPI.transfer(0x00)) >> 8;
@@ -613,7 +617,7 @@ uint8_t MCP2517FD::Read8(uint16_t address)
 {
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
-  SPI.transfer(CMD_READ | ((address >> 8)&0xF));
+  SPI.transfer(CMD_READ | ((address >> 8) & 0xF));
   SPI.transfer(address & 0xFF);
   uint8_t data = SPI.transfer(0x00);
   digitalWrite(_CS,HIGH);
@@ -625,7 +629,7 @@ uint16_t MCP2517FD::Read16(uint16_t address)
 {
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
-  SPI.transfer(CMD_READ | ((address >> 8)&0xF));
+  SPI.transfer(CMD_READ | ((address >> 8) & 0xF));
   SPI.transfer(address & 0xFF);
   uint16_t data = SPI.transfer(0x00);
   data += (SPI.transfer(0x00)) >> 8;
@@ -638,7 +642,7 @@ void MCP2517FD::Read(uint16_t address, uint8_t data[], uint16_t bytes) {
   // allows for sequential reading of registers starting at address - see data sheet
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
-  SPI.transfer(CMD_READ | ((address >> 8)&0xF));
+  SPI.transfer(CMD_READ | ((address >> 8) & 0xF));
   SPI.transfer(address & 0xFF);
   SPI.transferBytes(NULL, data, bytes); //read only operation
   digitalWrite(_CS,HIGH);
@@ -652,9 +656,39 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   //quickly read the whole thing then process it afterward
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
-  SPI.transfer(CMD_READ | ((address >> 8)&0xF));
+  SPI.transfer(CMD_READ | ((address >> 8) & 0xF));
   SPI.transfer(address & 0xFF);
-  SPI.transferBytes(NULL, (uint8_t *)&buffer[0], 76);
+  //read enough of the RAM to get an 8 byte message. 
+  //Then we check to see if we really need to read more.
+  //This prevents having to read 64 data bytes if we were just receiving normal frames.
+  SPI.transferBytes(NULL, (uint8_t *)&buffer[0], 20);
+  message.length = buffer[1] & 0xF;
+  switch (message.length)
+  {
+  case 9:
+    message.length = 12;
+    break;
+  case 10:
+    message.length = 16;
+    break;
+  case 11:
+    message.length = 20;
+    break;
+  case 12:
+    message.length = 24;
+    break;
+  case 13:
+    message.length = 32;
+    break;
+  case 14:
+    message.length = 48;
+    break;
+  case 15:
+    message.length = 64;
+    break;
+  }
+  int neededBytes = message.length - 8;
+  if (neededBytes > 0) SPI.transferBytes(NULL, (uint8_t *)&buffer[5], neededBytes);
   digitalWrite(_CS,HIGH);
   SPI.endTransaction();
   /*message in RAM is as follows:
@@ -682,36 +716,11 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   else
     message.rrs = buffer[1] >> 5 & 1;
   message.timestamp = buffer[2];
-  message.length = buffer[1];
-  if (message.fdMode)
-  {
-    switch (message.length)
-    {
-    case 9:
-      message.length = 12;
-      break;
-    case 10:
-      message.length = 16;
-      break;
-    case 11:
-      message.length = 20;
-      break;
-    case 12:
-      message.length = 24;
-      break;
-    case 13:
-      message.length = 32;
-      break;
-    case 14:
-      message.length = 48;
-      break;
-    case 15:
-      message.length = 64;
-      break;
-    }
-  }
-  for (int j = 0; j < 32; j++) message.data.uint32[j] = buffer[3 + j];
-  return (buffer[1] >> 11) & 31;
+  if (!message.fdMode && message.length > 8) message.length = 8;
+  //only copy the number of words we really have to.
+  int copyWords = (message.length + 3) / 4;
+  for (int j = 0; j < copyWords; j++) message.data.uint32[j] = buffer[3 + j];
+  return (buffer[1] >> 11) & 31; //return which filter produced this message
 }
 
 void MCP2517FD::Write8(uint16_t address, uint8_t data) {
@@ -758,6 +767,7 @@ void MCP2517FD::Write(uint16_t address, uint8_t data[], uint16_t bytes) {
 
 void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   uint32_t buffer[19];
+  int dataBytes;
   /*message in RAM is as follows (same as RX but without the timestamp):
     The first 32 bits are the message ID, either 11 or 29 bit (12 bit not handled yet), then bit 29 is RRS
     The next 32 bits have:
@@ -779,6 +789,7 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   else
     buffer[1] |= (message.rrs) ? (1 << 5) : 0;
   if (message.fdMode && message.length > 8) message.length = 8;
+  dataBytes = message.length;
   switch (message.length)
   {
   case 12:
@@ -807,13 +818,15 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
       buffer[1] |= message.length;
     else buffer[1] |= 8;
   }
-  for (int j = 0; j < 32; j++) buffer[2 + j] = message.data.uint32[j];
+  //only copy the number of data words we really have to.
+  int copyWords = (message.length + 3) / 4;
+  for (int j = 0; j < copyWords; j++) buffer[2 + j] = message.data.uint32[j];
 
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer(CMD_WRITE | ((address >> 8) & 0xF) );  
   SPI.transfer(address & 0xFF);
-  SPI.writeBytes((uint8_t *) &buffer[0], 72);
+  SPI.writeBytes((uint8_t *) &buffer[0], 8 + dataBytes); //and only write just as many bytes as we need to for this frame
   digitalWrite(_CS,HIGH);
   SPI.endTransaction();
 }
@@ -896,25 +909,25 @@ void MCP2517FD::intHandler(void) {
     //Now, acknowledge the interrupts by clearing the intf bits
     Write16(ADDR_CiINT, 0); 	
     
-    if(interruptFlags & 1)  //Transmit FIFO interrupt
-    {
+    //if(interruptFlags & 1)  //Transmit FIFO interrupt
+    //{
       //FIFOs 0, 1, 2 are TX so we do need to ask which one(s) triggered
-      uint8_t fifos = Read8(ADDR_CiTXIF);
+      //uint8_t fifos = Read8(ADDR_CiTXIF);
       //The idea here is to check whether the FIFO is not full and whether we have frames to send.
       //If it is both not full and we have a frame queued then push it into the FIFO and check again
-      if (fifos & 1) //FIFO 0 - Mid priority
-      {
+      //if (fifos & 1) //FIFO 0 - Mid priority
+      //{
         handleTXFifoISR(0);
-      }
-      if (fifos & 2) //FIFO 1 - Low priority
-      {
+      //}
+      //if (fifos & 2) //FIFO 1 - Low priority
+      //{
         handleTXFifoISR(1);
-      }
-      if (fifos & 4) //FIFO 2 - Hi priority
-      {
+      //}
+      //if (fifos & 4) //FIFO 2 - Hi priority
+      //{
         handleTXFifoISR(2);
-      }
-    }
+      //}
+    //}
     if(interruptFlags & 2)  //Receive FIFO interrupt
     {
       //no need to ask which FIFO matched, there is only one RX FIFO configured in this library
@@ -971,25 +984,34 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   }
 }
 
+/*
+This routine used to try to load a frame into hardware if possible. But, testing has shown that
+the ESP32 doesn't really take kindly to multiple pathways trying to use SPI at once. The SPI
+library just plain dies if you do that. So, all SPI access is through the interrupt handler now
+To make this work this routine just pretends an interrupt came in and so the interrupt handler
+sees our frame and tries to send it.
+*/
 void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
 {
   uint32_t status;
   uint16_t addr;
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
   if (fifo < 0) return;
   if (fifo > 2) return;
 
-  status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
-  if (status & 1) //FIFO has room for this message - immediately send it to hardware
-  {
-    addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
-    LoadFrameBuffer( addr + 0x400, newFrame );
-    Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo) + 1, 3); //Set UINC and TX_Request
-  }
-  else //no room on hardware. Locally buffer in software
-  {
+  //status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
+  //if (status & 1) //FIFO has room for this message - immediately send it to hardware
+  //{
+  //  addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
+  //  LoadFrameBuffer( addr + 0x400, newFrame );
+  //  Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo) + 1, 3); //Set UINC and TX_Request
+ // }
+  //else //no room on hardware. Locally buffer in software
+  //{
     xQueueSend(txQueue[fifo], &newFrame, 0); //try to queue, do not wait if we can't.
-  }
+    xHigherPriorityTaskWoken = xTaskNotifyGive(intTaskFD); //send notice to the handler task that it can do the SPI transaction now
+  //}
 }
 
 /*The idea here is to use the fid member (which is not normally used) as a signal to
