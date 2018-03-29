@@ -5,7 +5,12 @@
 #include "mcp2517fd_regs.h"
 #include <SPI.h>
 
-SPISettings fdSPISettings(20000000, MSBFIRST, SPI_MODE0); //20Mhz is the fastest we can go
+#define DEBUG_PRINT true
+
+//20Mhz is the fastest we can go
+#define SPI_SPEED 1000000
+
+SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0); 
 
 QueueHandle_t	callbackQueueMCP;
 static TaskHandle_t intTaskFD = NULL;
@@ -168,9 +173,10 @@ void MCP2517FD::initSPI()
   // Set up SPI Communication
 	// dataMode can be SPI_MODE0 or SPI_MODE3 only for MCP2517FD
   SPI.begin(SCK, MISO, MOSI, SS);
-	SPI.setClockDivider(spiFrequencyToClockDiv(20000000ul));
+	SPI.setClockDivider(spiFrequencyToClockDiv(SPI_SPEED));
 	SPI.setDataMode(SPI_MODE0);
 	SPI.setBitOrder(MSBFIRST);
+  if (DEBUG_PRINT) Serial.println("MCP2517FD SPI Inited");
 }
 
 /*
@@ -274,6 +280,9 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
 //Setup timer hardware, FIFOs, and Transmit Queue
 void MCP2517FD::commonInit()
 {
+
+  if (DEBUG_PRINT) Serial.println("commonInit()");
+
   REG_CiTXQCON txQCon;
   REG_CiFIFOCON fifoCon;
   REG_CiTSCON tsCon;
@@ -319,6 +328,8 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   REG_CiNBTCFG nominalCfg;
   REG_CiCON canConfig;
 
+  if (DEBUG_PRINT) Serial.println("_init()");
+
   // Reset MCP2517FD which puts us in config mode automatically
   Reset();
   delay(1);
@@ -359,14 +370,14 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
     // Return to Normal mode
     if(!Mode(CAN_CLASSIC_MODE)) 
     {
-        //SerialUSB.println("Could not enter normal mode");
+        if (DEBUG_PRINT) Serial.println("Could not enter normal mode");
         return false;
     }
   } else {
     // Set to Listen Only mode
     if(!Mode(CAN_LISTEN_ONLY_MODE)) 
     {
-        //SerialUSB.println("Could not enter listen only mode");
+        if (DEBUG_PRINT) Serial.println("Could not enter listen only mode");
         return false;
     }
   }
@@ -377,15 +388,14 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   if ((rtn & 0xFFFF0000) == 0xB8030000) 
   {
     inFDMode = false;
+    if (DEBUG_PRINT) Serial.println("MCP2517 Init Success");
     return true;
   }
   else 
   {
-    //Serial.println(data, HEX);
-    //Serial.println(rtn, HEX);
+    if (DEBUG_PRINT) Serial.println(rtn, HEX);
     return false;
   }
-
   return false;
 }
 
@@ -399,6 +409,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   REG_CiTSCON tsCon;
 
   uint32_t neededTQ;
+
+  if (DEBUG_PRINT) Serial.println("_initFD()");
 
   if (nominalSpeed < 125000) return 0; //won't work, die
   if (dataSpeed < 1000000ul) return 0; //also won't work.
@@ -453,14 +465,14 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     // Return to Normal mode
     if(!Mode(CAN_NORMAL_MODE)) 
     {
-        //SerialUSB.println("Could not enter normal mode");
+        if (DEBUG_PRINT) Serial.println("Could not enter normal mode");
         return false;
     }
   } else {
     // Set to Listen Only mode
     if(!Mode(CAN_LISTEN_ONLY_MODE)) 
     {
-        //SerialUSB.println("Could not enter listen only mode");
+        if (DEBUG_PRINT) Serial.println("Could not enter listen only mode");
         return false;
     }
   }
@@ -471,12 +483,15 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   if ((rtn & 0xFFFF0000) == 0xB8030000) 
   {
     inFDMode = true;
+    if (DEBUG_PRINT) Serial.println("MCP2517 InitFD Success");
     return true;
   }
   else 
   {
-    //Serial.println(data, HEX);
-    //Serial.println(rtn, HEX);
+    if (DEBUG_PRINT) 
+    {
+      Serial.println(rtn, HEX);
+    }
     return false;
   }
   return false;  
@@ -501,6 +516,7 @@ int MCP2517FD::_setFilter(uint32_t id, uint32_t mask, bool extended)
       }
     }
     //if we got here then there were no free filters. Return value of deaaaaath!
+    if (DEBUG_PRINT) Serial.println("Err: No filter set!");
     return -1;
 }
 
@@ -564,8 +580,7 @@ void MCP2517FD::disable()
 bool MCP2517FD::sendFrame(CAN_FRAME& txFrame)
 {
     CAN_FRAME_FD temp;
-    canToFD(txFrame, temp);
-    EnqueueTX(temp);
+    if (canToFD(txFrame, temp)) EnqueueTX(temp);
 }
 
 bool MCP2517FD::sendFrameFD(CAN_FRAME_FD& txFrame)
@@ -778,48 +793,35 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
        BRS (Baud rate switch for data) (bit 6)
        FDF (FD mode) (Bit 7)
        ESI (1 = tx node error passive, 0 = tx node error active) (bit 8)
-       Bits 11 - 15 = Filter hit (0-31)
+       SEQ (sequence number) (Bits 9-15) - Optional sequence number for your reference 
     Then each additional byte is a data byte (up to 64 bytes)
   */
   buffer[0] = message.id;
   buffer[1] = (message.extended) ? (1 << 4) : 0;
   buffer[1] |= (message.fdMode) ? (1 << 7) : 0; 
   if (message.fdMode)
-    buffer[1] |= (message.rrs) ? (1 << 29) : 0;
+    buffer[0] |= (message.rrs) ? (1 << 29) : 0;
   else
     buffer[1] |= (message.rrs) ? (1 << 5) : 0;
-  if (message.fdMode && message.length > 8) message.length = 8;
+  if (!message.fdMode && message.length > 8) message.length = 8;
   dataBytes = message.length;
-  switch (message.length)
+
+  //promote requested frame length to the next allowable size
+  if (message.length > 8 && message.length < 13) buffer[1] |= 9;
+  else if (message.length > 12 && message.length < 17) buffer[1] |= 10;
+  else if (message.length > 16 && message.length < 21) buffer[1] |= 11;
+  else if (message.length > 20 && message.length < 25) buffer[1] |= 12;
+  else if (message.length > 24 && message.length < 33) buffer[1] |= 13;
+  else if (message.length > 32 && message.length < 49) buffer[1] |= 14;
+  else if (message.length > 48 && message.length < 65) buffer[1] |= 15;
+  else 
   {
-  case 12:
-    buffer[1] |= 9;
-    break;
-  case 16:
-    buffer[1] |= 10;
-    break;
-  case 20:
-    buffer[1] |= 11;
-    break;
-  case 24:
-    buffer[1] |= 12;
-    break;
-  case 32:
-    buffer[1] |= 13;
-    break;
-  case 48:
-    buffer[1] |= 14;
-    break;
-  case 64:
-    buffer[1] |= 15;
-    break;
-  default:
-    if (message.length < 9) 
-      buffer[1] |= message.length;
+    if (message.length < 9) buffer[1] |= message.length;
     else buffer[1] |= 8;
   }
+
   //only copy the number of data words we really have to.
-  int copyWords = (message.length + 3) / 4;
+  int copyWords = (dataBytes + 3) / 4;
   for (int j = 0; j < copyWords; j++) buffer[2 + j] = message.data.uint32[j];
 
   SPI.beginTransaction(fdSPISettings);
@@ -865,7 +867,7 @@ void MCP2517FD::InitFilters(bool permissive) {
 
   _setFilterSpecific(0, value, value, false);
   _setFilterSpecific(1, value32, value32, true);
-}
+} 
 
 //Places the given frame into the receive queue
 void MCP2517FD::EnqueueRX(CAN_FRAME_FD& newFrame) {
@@ -909,25 +911,32 @@ void MCP2517FD::intHandler(void) {
     //Now, acknowledge the interrupts by clearing the intf bits
     Write16(ADDR_CiINT, 0); 	
     
-    //if(interruptFlags & 1)  //Transmit FIFO interrupt
-    //{
+    if(interruptFlags & 1)  //Transmit FIFO interrupt
+    {
       //FIFOs 0, 1, 2 are TX so we do need to ask which one(s) triggered
-      //uint8_t fifos = Read8(ADDR_CiTXIF);
+      uint8_t fifos = Read8(ADDR_CiTXIF);
       //The idea here is to check whether the FIFO is not full and whether we have frames to send.
       //If it is both not full and we have a frame queued then push it into the FIFO and check again
-      //if (fifos & 1) //FIFO 0 - Mid priority
-      //{
+      if (fifos & 1) //FIFO 0 - Mid priority
+      {
         handleTXFifoISR(0);
-      //}
-      //if (fifos & 2) //FIFO 1 - Low priority
-      //{
+      }
+      if (fifos & 2) //FIFO 1 - Low priority
+      {
         handleTXFifoISR(1);
-      //}
-      //if (fifos & 4) //FIFO 2 - Hi priority
-      //{
+      }
+      if (fifos & 4) //FIFO 2 - Hi priority
+      {
         handleTXFifoISR(2);
-      //}
-    //}
+      }
+    }
+    else //didn't get TX interrupt but check if we've got msgs in FIFO and see if we can queue them into hardware
+    {
+      if (uxQueueMessagesWaitingFromISR(txQueue[0]) > 0) handleTXFifoISR(0);
+      if (uxQueueMessagesWaitingFromISR(txQueue[1]) > 0) handleTXFifoISR(1);
+      if (uxQueueMessagesWaitingFromISR(txQueue[2]) > 0) handleTXFifoISR(2);
+    }
+
     if(interruptFlags & 2)  //Receive FIFO interrupt
     {
       //no need to ask which FIFO matched, there is only one RX FIFO configured in this library
