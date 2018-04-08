@@ -8,7 +8,7 @@
 #define DEBUG_PRINT true
 
 //20Mhz is the fastest we can go
-#define SPI_SPEED 1000000
+#define SPI_SPEED 20000000
 
 SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0); 
 
@@ -17,7 +17,6 @@ static TaskHandle_t intTaskFD = NULL;
 
 void MCPFD_INTHandler() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  Serial.write('X');
   vTaskNotifyGiveFromISR(intTaskFD, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
   if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
 }
@@ -294,7 +293,7 @@ void MCP2517FD::commonInit()
   txQCon.txBF.FifoSize = 2; //3 frame long FIFO
   txQCon.txBF.TxAttempts = 2; //3 attempts then quit
   txQCon.txBF.TxPriority = 15; //middle priority
-  txQCon.txBF.TxEmptyIE = 1; //enable interrupt for empty FIFO
+  txQCon.txBF.TxEmptyIE = 0; //disable interrupt for empty FIFO until we actually load a frames into queue
   Write(ADDR_CiTXQCON, txQCon.word);
   if (DEBUG_PRINT) 
   {
@@ -319,7 +318,7 @@ void MCP2517FD::commonInit()
   fifoCon.txBF.FifoSize = 2; //3 frames long
   fifoCon.txBF.PayLoadSize = 7;
   fifoCon.txBF.TxAttempts = 2; //3 attempts then quit
-  fifoCon.txBF.TxEmptyIE = 1;
+  fifoCon.txBF.TxEmptyIE = 0;
   Write(ADDR_CiFIFOCON + CiFIFO_OFFSET, fifoCon.word); //Write to FIFO1
 
   fifoCon.txBF.TxPriority = 31;
@@ -360,8 +359,9 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   // Set registers
   nominalCfg.bF.SJW = SJW;
   nominalCfg.bF.TSEG1 = (unsigned int)(((float)Freq / 4.0) * 3.0) - 2;
-  nominalCfg.bF.TSEG2 = Freq - nominalCfg.bF.TSEG1 - 2;
+  nominalCfg.bF.TSEG2 = Freq - nominalCfg.bF.TSEG1 - 3;
   nominalCfg.bF.BRP = (1000000ul / CAN_Bus_Speed) - 1;
+
   canConfig.bF.IsoCrcEnable = 0; //Don't use newer ISO format. I think it might screw up normal can? Maybe this doesn't matter at all for std can
   canConfig.bF.DNetFilterCount = 0; //Don't use device net filtering
   canConfig.bF.ProtocolExceptionEventDisable = 0; //Allow softer handling of protocol exception
@@ -938,10 +938,11 @@ void MCP2517FD::intHandler(void) {
     uint32_t status;
     uint16_t addr;
     uint32_t filtHit;
+
     // determine which interrupt flags have been set
     uint32_t interruptFlags = Read(ADDR_CiINT);
     //Now, acknowledge the interrupts by clearing the intf bits
-    Write16(ADDR_CiINT, 0); 	
+    Write16(ADDR_CiINT, 0);
     
     if(interruptFlags & 1)  //Transmit FIFO interrupt
     {
@@ -951,14 +952,17 @@ void MCP2517FD::intHandler(void) {
       //If it is both not full and we have a frame queued then push it into the FIFO and check again
       if (fifos & 1) //FIFO 0 - Mid priority
       {
+        Write8(ADDR_CiFIFOCON, 0x80); //Keep FIFO as TX but disable Queue Empty Interrupt
         handleTXFifoISR(0);
       }
       if (fifos & 2) //FIFO 1 - Low priority
       {
+        Write8(ADDR_CiFIFOCON + CiFIFO_OFFSET, 0x80);
         handleTXFifoISR(1);
       }
       if (fifos & 4) //FIFO 2 - Hi priority
       {
+        Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * 2), 0x80);
         handleTXFifoISR(2);
       }
     }
@@ -1009,9 +1013,11 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   uint32_t status;
   uint16_t addr;
   CAN_FRAME_FD frame;
+  uint8_t wroteFrames = 0;
 
   if (fifo < 0) return;
   if (fifo > 2) return;
+
   status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
   //While the FIFO has room and we still have frames to send
   while ( (status & 1) && (uxQueueMessagesWaitingFromISR(txQueue[fifo]) > 0) )
@@ -1020,8 +1026,13 @@ void MCP2517FD::handleTXFifoISR(int fifo)
     addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
     if (xQueueReceiveFromISR(txQueue[fifo], &frame, NULL) != pdTRUE) return; //abort if we can't load a frame from the queue!
     LoadFrameBuffer( addr + 0x400, frame );
+    wroteFrames = 1;
     Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo) + 1, 3); //Set UINC and TX_Request
     status = Read(ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo));
+  }
+  if (wroteFrames != 0)
+  {
+    Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo), 0x84); //Keep as TX queue and enable interrupt for queue empty
   }
 }
 
@@ -1050,8 +1061,11 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
  // }
   //else //no room on hardware. Locally buffer in software
   //{
-    xQueueSend(txQueue[fifo], &newFrame, 0); //try to queue, do not wait if we can't.
-    xHigherPriorityTaskWoken = xTaskNotifyGive(intTaskFD); //send notice to the handler task that it can do the SPI transaction now
+    //try to queue, do not wait if we can't. If we can then pretend an interrupt happened.
+    if (xQueueSend(txQueue[fifo], &newFrame, 0) == pdPASS) 
+    {
+      xHigherPriorityTaskWoken = xTaskNotifyGive(intTaskFD); //send notice to the handler task that it can do the SPI transaction now
+    }
   //}
 }
 
