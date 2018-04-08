@@ -138,6 +138,7 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   savedFreq = 0;
   running = 0; 
   inFDMode = false;
+  fdSupported = true;
   
   rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
 	txQueue[0] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
@@ -338,6 +339,7 @@ void MCP2517FD::commonInit()
 bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool autoBaud) {
   REG_CiNBTCFG nominalCfg;
   REG_CiCON canConfig;
+  int tseg1, tseg2;
   uint32_t debugVal;
 
   if (DEBUG_PRINT) Serial.println("_init()");
@@ -354,13 +356,34 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
     so we want a prescaler that takes 1 million / target baud to get a prescaler.
     Obviously this makes the upper limit 1M CAN rate be a prescaler of 1. 
     250K is a prescaler of 4, 33.333k is a prescale of 30
-    then we set TSEG1 = ((Freq / 4) * 3) - 1 and TSEG2 = (Freq - TSEG1 - 1)
+    We need TSEG1 + TSEG2 + 1 to equal Freq
   */
   // Set registers
   nominalCfg.bF.SJW = SJW;
-  nominalCfg.bF.TSEG1 = (unsigned int)(((float)Freq / 4.0) * 3.0) - 2;
-  nominalCfg.bF.TSEG2 = Freq - nominalCfg.bF.TSEG1 - 3;
+  tseg1 = (unsigned int)(((float)Freq / 4.0) * 3.0) - 1;
+  tseg2 = Freq - tseg1 - 1;
+  nominalCfg.bF.TSEG1 = tseg1 - 1; //registers store value one less than actual
+  nominalCfg.bF.TSEG2 = tseg2 - 1;
+  if (tseg1 > 256 || tseg1 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Nominal TSeg1 outside of limits. Invalid baud rate!");
+    return false;
+  }
+  if (tseg2 > 128 || tseg2 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Nominal TSeg2 outside of limits. Invalid baud rate!");
+    return false;
+  }
   nominalCfg.bF.BRP = (1000000ul / CAN_Bus_Speed) - 1;
+  uint32_t calcRate = (Freq * 1000000ul) / (nominalCfg.bF.BRP + 1) / (tseg1 + tseg2 + 1);
+  int errRate = abs(CAN_Bus_Speed - calcRate);
+  if (errRate >= (CAN_Bus_Speed / 50)) //if more than 2% error in speed setting
+  {
+    if (DEBUG_PRINT) {
+      Serial.println("WARNING - Set baud does not match requested baud.");
+      Serial.println(calcRate);
+    }
+  }
 
   canConfig.bF.IsoCrcEnable = 0; //Don't use newer ISO format. I think it might screw up normal can? Maybe this doesn't matter at all for std can
   canConfig.bF.DNetFilterCount = 0; //Don't use device net filtering
@@ -427,12 +450,13 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   REG_CiTXQCON txQCon;
   REG_CiFIFOCON fifoCon;
   REG_CiTSCON tsCon;
+  int tseg1, tseg2;
 
   uint32_t neededTQ;
 
   if (DEBUG_PRINT) Serial.println("_initFD()");
 
-  if (nominalSpeed < 500000) return 0; //won't work, die
+  if (nominalSpeed < 125000) return 0; //won't work, die - Keep in mind that the FD spec doesn't want less than 500k here though
   if (dataSpeed < 1000000ul) return 0; //also won't work.
 
   // Reset MCP2517FD which puts us in config mode automatically
@@ -443,26 +467,48 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
 
   /*Forget everything said about the baud rate generator in the _init function above. When we
     plan to be in FD mode it is best if the baud rate generator uses the same prescaler for both
-    the nominal and data rates. So, this is forced to a prescaler of 1 for both. This gives the
-    best resolution and results for FD mode. As such, you can't use a baud rate under 125k or
-    this routine will die. If you need less than 125k you probably aren't using FD mode and should 
-    be using the non-FD routines.
+    the nominal and data rates. 
   */
   // Set registers
   nominalCfg.bF.SJW = sjw;
   neededTQ = (freq * 1000000ul) / nominalSpeed;
-  nominalCfg.bF.TSEG1 = ((neededTQ * 8) / 10) - 1; //set sample point at 80%
-  nominalCfg.bF.TSEG2 = (neededTQ - nominalCfg.bF.TSEG1) - 2;
+  tseg1 = ((neededTQ * 8) / 10) - 1; //set sample point at 80%
+  tseg2 = neededTQ - tseg1 - 1;
+  if (tseg1 > 256 || tseg1 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Nominal TSeg1 outside of limits. Invalid baud rates!");
+    return false;
+  }
+  if (tseg2 > 128 || tseg2 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Nominal TSeg2 outside of limits. Invalid baud rates!");
+    return false;
+  }
+
+  nominalCfg.bF.TSEG1 = tseg1 - 1;
+  nominalCfg.bF.TSEG2 = tseg2 - 1;
   nominalCfg.bF.BRP = 0; //baud rate prescaler. 0 = 1x prescale
 
   /*As above, we lock the prescaler at 1x and figure out the Seg1/Seg2 based on that.
   */
   dataCfg.bF.SJW = sjw;
   neededTQ = (freq * 1000000ul) / dataSpeed;
-  dataCfg.bF.TSEG1 = ((neededTQ * 8) / 10) - 1; //set sample point at 80%
-  dataCfg.bF.TSEG2 = (neededTQ - nominalCfg.bF.TSEG1) - 1;
+  tseg1 = ((neededTQ * 8) / 10) - 1; //set sample point at 80%
+  tseg2 = neededTQ - tseg1 - 1;
+  if (tseg1 > 32 || tseg1 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Data TSeg1 outside of limits. Invalid baud rates!");
+    return false;
+  }
+  if (tseg2 > 16 || tseg2 < 1)
+  {
+    if (DEBUG_PRINT) Serial.println("Data TSeg2 outside of limits. Invalid baud rates!");
+    return false;
+  }
+
+  dataCfg.bF.TSEG1 = tseg1 - 1;
+  dataCfg.bF.TSEG2 = tseg2 - 1;
   dataCfg.bF.BRP = 0;
-  
   canConfig.bF.IsoCrcEnable = 1; //It's likely we need ISO CRC mode active to get FD to work properly
   canConfig.bF.DNetFilterCount = 0; //Don't use device net filtering
   canConfig.bF.ProtocolExceptionEventDisable = 0; //Allow softer handling of protocol exception
