@@ -91,37 +91,6 @@ void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
     }
 }
 
-//try to put a standard CAN frame into a CAN_FRAME_FD structure
-bool MCP2517FD::canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest)
-{
-  dest.id = source.id;
-  dest.fid = source.fid;
-  dest.rrs = source.rtr;
-  dest.priority = source.priority;
-  dest.extended = source.extended;
-  dest.fdMode = false;
-  dest.timestamp = source.timestamp;
-  dest.length = source.length;
-  dest.data.uint64[0] = source.data.uint64;
-  return true;
-}
-
-//Try to do inverse - turn a CANFD frame into a standard CAN_FRAME struct
-bool MCP2517FD::fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest)
-{
-  if (source.length > 8) return false;
-  if (source.fdMode > 0) return false;
-  dest.id = source.id;
-  dest.fid = source.fid;
-  dest.rtr = source.rrs;
-  dest.priority = source.priority;
-  dest.extended = source.extended;
-  dest.timestamp = source.timestamp;
-  dest.length = source.length;
-  dest.data.uint64 = source.data.uint64[0];
-  return true;
-}
-
 MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   pinMode(CS_Pin, OUTPUT);
   digitalWrite(CS_Pin,HIGH);

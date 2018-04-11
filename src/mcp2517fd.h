@@ -80,8 +80,7 @@ class MCP2517FD : public CAN_COMMON
     void handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit);
 	void handleTXFifoISR(int fifo);
 	void handleTXFifo(int fifo, CAN_FRAME_FD &newFrame);
-	bool canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest);
-	bool fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest);
+
     // Pin variables
 	uint8_t _CS;
 	uint8_t _INT;

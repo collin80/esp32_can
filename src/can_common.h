@@ -240,6 +240,8 @@ public:
     void setCallbackFD(uint8_t mailbox, void (*cb)(CAN_FRAME_FD *));
     void removeGeneralCallbackFD();
     void removeCallbackFD(uint8_t mailbox);
+    bool canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest);
+	bool fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest);
 
 protected:
 	CANListener *listener[SIZE_LISTENERS];
