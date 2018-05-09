@@ -118,7 +118,7 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   //TODO: Both versions should be pinned to application processor so we don't get cross-thread issues
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                   //func        desc    stack, params, priority, handle to task
-  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 2048, this, 3, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 4096, this, 3, NULL, 0);
   xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 10, &intTaskFD, 0);
 }
 
