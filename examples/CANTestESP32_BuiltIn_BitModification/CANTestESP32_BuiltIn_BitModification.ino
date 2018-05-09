@@ -32,10 +32,25 @@ void setup() {
   txFrame.id = 0x123;
   txFrame.extended = false;
   txFrame.length = 4;
-  txFrame.data.uint8[0] = 0x10;
-  txFrame.data.uint8[1] = 0x1A;
-  txFrame.data.uint8[2] = 0xFF;
-  txFrame.data.uint8[3] = 0x5D;
+  txFrame.data.int8[0] = 0x10;
+  txFrame.data.int8[1] = 0x1A;
+  txFrame.data.int8[2] = 0xFF;
+  txFrame.data.int8[3] = 0x5D;
+  txFrame.data.int8[7] = 0xFF;
+  txFrame.data.bit[0] = 1;
+  txFrame.data.bit[10] = 1;
+  txFrame.data.bit[20] = 1;
+  txFrame.data.bit[40] = 1;
+  txFrame.data.bit[50] = 1;
+  txFrame.data.bit[60] = 0;
+  for (int i = 0; i < 8; i++) 
+  {
+    for (int j = 7; j > -1; j--) {
+      Serial.print(txFrame.data.bit[i * 8 + j]);
+    }
+    Serial.println();  
+  }
+  Serial.println();
   CAN0.sendFrame(txFrame);
 
   CAN0.watchFor(0x100, 0xF00); //setup a special filter

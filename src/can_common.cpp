@@ -368,3 +368,34 @@ uint32_t CAN_COMMON::initFD(uint32_t nominalRate, uint32_t dataRate)
 {
 	return 0;
 }
+
+//try to put a standard CAN frame into a CAN_FRAME_FD structure
+bool CAN_COMMON::canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest)
+{
+  dest.id = source.id;
+  dest.fid = source.fid;
+  dest.rrs = source.rtr;
+  dest.priority = source.priority;
+  dest.extended = source.extended;
+  dest.fdMode = false;
+  dest.timestamp = source.timestamp;
+  dest.length = source.length;
+  dest.data.uint64[0] = source.data.uint64;
+  return true;
+}
+
+//Try to do inverse - turn a CANFD frame into a standard CAN_FRAME struct
+bool CAN_COMMON::fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest)
+{
+  if (source.length > 8) return false;
+  if (source.fdMode > 0) return false;
+  dest.id = source.id;
+  dest.fid = source.fid;
+  dest.rtr = source.rrs;
+  dest.priority = source.priority;
+  dest.extended = source.extended;
+  dest.timestamp = source.timestamp;
+  dest.length = source.length;
+  dest.data.uint64 = source.data.uint64[0];
+  return true;
+}

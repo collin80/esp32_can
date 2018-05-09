@@ -75,6 +75,8 @@ public:
   bool processFrame(CAN_frame_t &frame);
   void sendCallback(CAN_FRAME *frame);
 
+  void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
+
 private:
   // Pin variables
   ESP32_FILTER filters[NUM_FILTERS];

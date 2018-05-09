@@ -1,10 +1,9 @@
 esp32_can
 ==========
 
-An Arduino library to support the built-in CAN module on the ESP32.
-
-This library shares a common API and base class with due_can and mcp2515 
-and requires a shared base library called can_common. 
-
-It can be found at:
-https://github.com/collin80/can_common
+A new, unified library all inclusive of code needed to make it operate. Implements
+a CAN driver for the built-in CAN hardware on an ESP32. Also implements a driver
+for the MCP2517FD SPI connected CAN module. The builtin CAN is called CAN0,
+the MCP2517FD is called CAN1. This library is specifically meant to be used with 
+the EVTV ESP32-Due board. However, with small modifications either driver found
+within this library could be used on other boards.

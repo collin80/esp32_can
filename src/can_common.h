@@ -29,11 +29,42 @@
 #define CAN_DEFAULT_BAUD	500000
 #define CAN_DEFAULT_FD_RATE 4000000
 
+class BitRef
+{
+public:
+    BitRef& operator=( bool x )
+    {
+        *byteRef = (*byteRef & ~(1 << bitPos));
+        if (x) *byteRef = *byteRef | (1 << bitPos);
+        return *this;
+    }
+    //BitRef& operator=( const BitRef& x );
+
+    operator bool() const 
+    {
+        if (*byteRef & (1 << bitPos)) return true;
+        return false;
+    }
+public:
+    BitRef(uint8_t *ref, int pos)
+    {
+        byteRef = ref;
+        bitPos = pos;
+    }
+private:
+    uint8_t *byteRef;
+    int bitPos;
+};
+
 typedef union {
     uint64_t uint64;
     uint32_t uint32[2]; 
     uint16_t uint16[4];
     uint8_t  uint8[8];
+    int64_t int64;
+    int32_t int32[2]; 
+    int16_t int16[4];
+    int8_t  int8[8];
 
     //deprecated names used by older code
     uint64_t value;
@@ -49,6 +80,21 @@ typedef union {
     };
     uint8_t bytes[8];
     uint8_t byte[8]; //alternate name so you can omit the s if you feel it makes more sense
+    struct {
+        uint8_t bitField[8];
+        const bool operator[]( int pos ) const
+        {
+            if (pos < 0 || pos > 63) return 0;
+            int bitFieldIdx = pos / 8;
+            return (bitField[bitFieldIdx] >> pos) & 1;
+        }
+        BitRef operator[]( int pos )
+        {
+            if (pos < 0 || pos > 63) return BitRef((uint8_t *)&bitField[0], 0);
+            uint8_t *ptr = (uint8_t *)&bitField[0]; 
+            return BitRef(ptr + (pos / 8), pos & 7);
+        }
+    } bit;
 } BytesUnion;
 
 typedef union {
@@ -56,6 +102,26 @@ typedef union {
     uint32_t uint32[16]; 
     uint16_t uint16[32];
     uint8_t  uint8[64];
+    int64_t int64[8];
+    int32_t int32[16]; 
+    int16_t int16[32];
+    int8_t  int8[64];
+
+    struct {
+        uint64_t bitField[64];
+        const bool operator[]( int pos ) const
+        {
+            if (pos < 0 || pos > 319) return 0;
+            int bitfieldIdx = pos / 8;
+            return (bitField[bitfieldIdx] >> pos) & 1;
+        }
+        BitRef operator[]( int pos )
+        {
+            if (pos < 0 || pos > 319) return BitRef((uint8_t *)&bitField[0], 0);
+            uint8_t *ptr = (uint8_t *)&bitField[0]; 
+            return BitRef(ptr + (pos / 8), pos & 7);
+        }
+    } bit;
 } BytesUnion_FD;
 
 class CAN_FRAME
@@ -174,6 +240,8 @@ public:
     void setCallbackFD(uint8_t mailbox, void (*cb)(CAN_FRAME_FD *));
     void removeGeneralCallbackFD();
     void removeCallbackFD(uint8_t mailbox);
+    bool canToFD(CAN_FRAME &source, CAN_FRAME_FD &dest);
+	bool fdToCan(CAN_FRAME_FD &source, CAN_FRAME &dest);
 
 protected:
 	CANListener *listener[SIZE_LISTENERS];
