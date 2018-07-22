@@ -163,7 +163,7 @@ void ESP32CAN::disable()
     CAN_stop();
 }
 
-bool ESP32CAN::processFrame(CAN_frame_t &frame)
+bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
 {
     CANListener *thisListener;
     CAN_FRAME msg;
@@ -245,11 +245,13 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
 
 bool ESP32CAN::rx_avail()
 {
+    if (!CAN_cfg.rx_queue) return false;
     return uxQueueMessagesWaiting(CAN_cfg.rx_queue) > 0?true:false;
 }
 
 uint16_t ESP32CAN::available()
 {
+    if (!CAN_cfg.rx_queue) return 0;
     return uxQueueMessagesWaiting(CAN_cfg.rx_queue);
 }
 

@@ -40,7 +40,7 @@
 #include "esp32_can_builtin_lowlevel.h"
 #include "esp32_can.h"
 
-extern "C" void CAN_isr(void *arg_p)
+extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
 	//Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
