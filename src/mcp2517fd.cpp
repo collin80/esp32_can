@@ -15,8 +15,9 @@ SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0);
 QueueHandle_t	callbackQueueMCP;
 static TaskHandle_t intTaskFD = NULL;
 
-void MCPFD_INTHandler() {
+void IRAM_ATTR MCPFD_INTHandler() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  if (!intTaskFD) return; //if it hasn't been configured yet then abort
   vTaskNotifyGiveFromISR(intTaskFD, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
   if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
 }
@@ -534,6 +535,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
 
 uint16_t MCP2517FD::available()
 {
+  if (!rxQueue) return 0; //why would this happen though?!
 	return uxQueueMessagesWaiting(rxQueue);
 }
 
