@@ -76,7 +76,7 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
     }
 }
 
-void CAN_read_frame()
+void IRAM_ATTR CAN_read_frame()
 {
 	//byte iterator
 	uint8_t __byte_i;
@@ -135,7 +135,7 @@ void CAN_SetListenOnly(bool mode)
     CAN_init();
 }
 
-int CAN_write_frame(const CAN_frame_t* p_frame)
+int IRAM_ATTR CAN_write_frame(const CAN_frame_t* p_frame)
 {
 
 	//byte iterator

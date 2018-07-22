@@ -919,7 +919,7 @@ void MCP2517FD::InitFilters(bool permissive) {
 } 
 
 //Places the given frame into the receive queue
-void MCP2517FD::EnqueueRX(CAN_FRAME_FD& newFrame) {
+void IRAM_ATTR MCP2517FD::EnqueueRX(CAN_FRAME_FD& newFrame) {
 	xQueueSendFromISR(rxQueue, &newFrame, NULL); //we're probably in ISR when we call this so use that version
 }
 
@@ -945,10 +945,13 @@ void MCP2517FD::EnqueueTX(CAN_FRAME_FD& newFrame) {
 }
 
 bool MCP2517FD::GetRXFrame(CAN_FRAME_FD &frame) {
+  if (!rxQueue) return false;
   if (xQueueReceive(rxQueue, &frame, 0) == pdTRUE) return true;
 	return false;
 }
 
+//Not truly an interrupt handler in the sense that it does NOT run in interrupt context
+//but it does handle the MCP2517FD interrupt still.
 void MCP2517FD::intHandler(void) {
     CAN_FRAME_FD message;
     uint32_t ctrlVal;
@@ -1079,6 +1082,7 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
   //else //no room on hardware. Locally buffer in software
   //{
     //try to queue, do not wait if we can't. If we can then pretend an interrupt happened.
+    if (!txQueue[fifo]) return;
     if (xQueueSend(txQueue[fifo], &newFrame, 0) == pdPASS) 
     {
       xHigherPriorityTaskWoken = xTaskNotifyGive(intTaskFD); //send notice to the handler task that it can do the SPI transaction now

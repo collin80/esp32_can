@@ -163,6 +163,7 @@ void ESP32CAN::disable()
     CAN_stop();
 }
 
+//This function does run in interrupt context
 bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
 {
     CANListener *thisListener;
