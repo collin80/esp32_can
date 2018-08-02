@@ -118,13 +118,22 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
   savedFreq = 0;
   running = 0; 
   inhibitTransactions = false;
-  rxQueue = xQueueCreate(32, sizeof(CAN_FRAME));
-	txQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+  initializedResources = false;
+}
+
+void MCP2515::initializeResources()
+{
+  if (initializedResources) return;
+
+  rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME));
+  txQueue = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME));
   callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
   xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 2048, this, 3, NULL, 0);
   xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 2048, this, 10, &intDelegateTask, 0);
+
+  initializedResources = true;
 }
 
 void MCP2515::setINTPin(uint8_t pin)
@@ -231,6 +240,8 @@ bool MCP2515::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool auto
   SPI.setClockDivider(SPI_CLOCK_DIV32);
   SPI.setDataMode(SPI_MODE0);
   SPI.setBitOrder(MSBFIRST);
+
+  if (!initializedResources) initializeResources();
   
   // Reset MCP2515 which puts it in configuration mode
   Reset();

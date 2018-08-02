@@ -37,6 +37,9 @@
 
 //#define DEBUG_SETUP
 
+#define RX_BUFFER_SIZE	32
+#define TX_BUFFER_SIZE  16
+
 class MCP2515 : public CAN_COMMON
 {
   public:
@@ -93,6 +96,7 @@ class MCP2515 : public CAN_COMMON
   private:
 	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
     void handleFrameDispatch(CAN_FRAME *frame, int filterHit);
+    void initializeResources();
     // Pin variables
 	uint8_t _CS;
 	uint8_t _INT;
@@ -102,6 +106,7 @@ class MCP2515 : public CAN_COMMON
 	volatile uint8_t savedFreq;
 	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
 	volatile bool inhibitTransactions;
+    bool initializedResources;
     // Definitions for software buffers
 };
 

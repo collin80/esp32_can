@@ -88,6 +88,7 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(NUM_FILTERS)
         filters[i].extended = false;
         filters[i].configured = false;
     }
+    initializedResources = false;
 }
 
 int ESP32CAN::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
@@ -125,12 +126,17 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         filters[i].extended = false;
         filters[i].configured = false;
     }
+
+    if (!initializedResources) {
                                  //Queue size, item size
-    CAN_cfg.rx_queue = xQueueCreate(32,sizeof(CAN_frame_t));
-    CAN_cfg.tx_queue = xQueueCreate(16,sizeof(CAN_frame_t));
-    callbackQueue = xQueueCreate(32, sizeof(CAN_FRAME));
-              //func        desc    stack, params, priority, handle to task
-    xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
+        CAN_cfg.rx_queue = xQueueCreate(RX_BUFFER_SIZE,sizeof(CAN_frame_t));
+        CAN_cfg.tx_queue = xQueueCreate(TX_BUFFER_SIZE,sizeof(CAN_frame_t));
+        callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+                  //func        desc    stack, params, priority, handle to task
+        xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
+        initializedResources = true;
+    }
+
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     CAN_init();
 }

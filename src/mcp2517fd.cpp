@@ -109,18 +109,26 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   running = 0; 
   inFDMode = false;
   fdSupported = true;
-  
+  initializedResources = false;
+}
+
+void MCP2517FD::initializeResources()
+{
+  if (initializedResources) return;
+
   rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
-	txQueue[0] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
-	txQueue[1] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
-	txQueue[2] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
+  txQueue[0] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
+  txQueue[1] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
+  txQueue[2] = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
 
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
-  //TODO: Both versions should be pinned to application processor so we don't get cross-thread issues
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
-                  //func        desc    stack, params, priority, handle to task
-  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 4096, this, 3, NULL, 0);
+                           //func        desc    stack, params, priority, handle to task, which core to pin to
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 3072, this, 3, NULL, 0);
   xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 10, &intTaskFD, 0);
+
+  initializedResources = true;
+
 }
 
 void MCP2517FD::setINTPin(uint8_t pin)
@@ -314,6 +322,8 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
 
   if (DEBUG_PRINT) Serial.println("_init()");
 
+  if (!initializedResources) initializeResources();
+
   // Reset MCP2517FD which puts us in config mode automatically
   Reset();
   delay(1);
@@ -425,6 +435,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   uint32_t neededTQ;
 
   if (DEBUG_PRINT) Serial.println("_initFD()");
+
+  if (!initializedResources) initializeResources();
 
   if (nominalSpeed < 125000) return 0; //won't work, die - Keep in mind that the FD spec doesn't want less than 500k here though
   if (dataSpeed < 1000000ul) return 0; //also won't work.
