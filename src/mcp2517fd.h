@@ -6,8 +6,8 @@
 #include <can_common.h>
 
 //#define DEBUG_SETUP
-#define RX_BUFFER_SIZE	32
-#define TX_BUFFER_SIZE	8  //there are three buffers though so (value * 3)
+#define RX_BUFFER_SIZE	64
+#define TX_BUFFER_SIZE  16  //there are three buffers though so (value * 3)
 
 #define NUM_FILTERS 32
 
@@ -80,6 +80,7 @@ class MCP2517FD : public CAN_COMMON
     void handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit);
 	void handleTXFifoISR(int fifo);
 	void handleTXFifo(int fifo, CAN_FRAME_FD &newFrame);
+    void initializeResources();
 
     // Pin variables
 	uint8_t _CS;
@@ -89,6 +90,7 @@ class MCP2517FD : public CAN_COMMON
 	volatile uint32_t savedDataBaud;
 	volatile uint8_t savedFreq;
 	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
+    bool initializedResources; //have we set up queues and interrupts?
 	QueueHandle_t	rxQueue;
 	QueueHandle_t	txQueue[3];
 };

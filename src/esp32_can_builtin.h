@@ -44,6 +44,8 @@
 
 //#define DEBUG_SETUP
 #define NUM_FILTERS 32
+#define RX_BUFFER_SIZE	64
+#define TX_BUFFER_SIZE  16
 
 typedef struct
 {
@@ -80,6 +82,7 @@ public:
 private:
   // Pin variables
   ESP32_FILTER filters[NUM_FILTERS];
+  bool initializedResources;
 };
 
 extern QueueHandle_t callbackQueue;
