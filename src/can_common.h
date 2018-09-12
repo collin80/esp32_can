@@ -129,29 +129,31 @@ class CAN_FRAME
 public:
     CAN_FRAME();
 
-    uint32_t id;      // 29 bit if ide set, 11 bit otherwise
-    uint32_t fid;     // family ID - used internally to library
-    uint8_t rtr;      // Remote Transmission Request (1 = RTR, 0 = data frame)
-    uint8_t priority; // Priority but only important for TX frames and then only for special uses (0-31)
-    uint8_t extended; // Extended ID flag
-    uint32_t timestamp;    // CAN timer value when mailbox message was received.
-    uint8_t length;   // Number of data bytes
-    BytesUnion data;  // 64 bits - lots of ways to access it.
+    BytesUnion data;    // 64 bits - lots of ways to access it.
+    uint32_t id;        // 29 bit if ide set, 11 bit otherwise
+    uint32_t fid;       // family ID - used internally to library
+    uint32_t timestamp; // CAN timer value when mailbox message was received.
+    uint8_t rtr;        // Remote Transmission Request (1 = RTR, 0 = data frame)
+    uint8_t priority;   // Priority but only important for TX frames and then only for special uses (0-31)
+    uint8_t extended;   // Extended ID flag
+    uint8_t length;     // Number of data bytes
+    
 };
 
 class CAN_FRAME_FD
 {
 public:
     CAN_FRAME_FD();
+
+    BytesUnion_FD data;   // 64 bytes - lots of ways to access it.
     uint32_t id;          // EID if ide set, SID otherwise
     uint32_t fid;         // family ID
+    uint32_t timestamp;        // CAN timer value when mailbox message was received.
     uint8_t rrs;          // RRS for CAN-FD (optional 12th standard ID bit)
     uint8_t priority;     // Priority but only important for TX frames and then only for special uses. (0-31)
     uint8_t extended;     // Extended ID flag
     uint8_t fdMode;       // 0 = normal CAN frame, 1 = CAN-FD frame
-    uint32_t timestamp;        // CAN timer value when mailbox message was received.
     uint8_t length;       // Number of data bytes
-    BytesUnion_FD data;   // 64 bytes - lots of ways to access it.
 };
 
 class CANListener
