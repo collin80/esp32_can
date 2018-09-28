@@ -40,17 +40,31 @@
 #include "esp32_can_builtin_lowlevel.h"
 #include "esp32_can.h"
 
+static TaskHandle_t intTaskBuiltIn = NULL;
+
 extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
-	//Interrupt flag buffer
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    if (!intTaskBuiltIn) return; //if it hasn't been configured yet then abort
+    vTaskNotifyGiveFromISR(intTaskBuiltIn, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
+    if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
+}
+
+void CAN_Handle_Int()
+{
+    //Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
     CAN_frame_t __frame;
 
     // Read interrupt status and clear flags
     interrupt = (__CAN_IRQ_t)MODULE_CAN->IR.U;
 
+    // Handle RX frame available interrupt
+    if ((interrupt & __CAN_IRQ_RX) != 0)
+    	CAN_read_frame();
+
     // Handle TX complete interrupt
-    if ((interrupt & __CAN_IRQ_TX) != 0) 
+    if (MODULE_CAN->SR.B.TBS)  //if we're not busy with transmission then check if we should be sending
     {
     	if (uxQueueMessagesWaiting(CAN_cfg.tx_queue) > 0)
         {
@@ -58,10 +72,6 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
             CAN_write_frame(&__frame);
         }
     }
-
-    // Handle RX frame available interrupt
-    if ((interrupt & __CAN_IRQ_RX) != 0)
-    	CAN_read_frame();
 
     // Handle error interrupts.
     if ((interrupt & (__CAN_IRQ_ERR						//0x4
@@ -76,7 +86,16 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
     }
 }
 
-void IRAM_ATTR CAN_read_frame()
+void task_IntBI( void *pvParameters )
+{
+  while (1)
+  {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
+    CAN_Handle_Int(); //not truly an interrupt handler anymore but still kind of
+  }
+}
+
+void CAN_read_frame()
 {
 	//byte iterator
 	uint8_t __byte_i;
@@ -253,6 +272,8 @@ int CAN_init()
 
     //clear interrupt flags
     (void)MODULE_CAN->IR.U;
+
+    if (!intTaskBuiltIn) xTaskCreatePinnedToCore(&task_IntBI, "CAN_BI_INT", 2048, NULL, 10, &intTaskBuiltIn, 0);
 
     //install CAN ISR
     esp_intr_alloc(ETS_CAN_INTR_SOURCE,0,CAN_isr,NULL,NULL);

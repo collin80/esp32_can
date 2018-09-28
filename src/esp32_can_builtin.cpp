@@ -169,7 +169,7 @@ void ESP32CAN::disable()
     CAN_stop();
 }
 
-//This function does run in interrupt context
+//This function no longer runs in interrupt context
 bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
 {
     CANListener *thisListener;
@@ -190,13 +190,13 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
             if (cbCANFrame[i])
             {
                 msg.fid = i;
-                xQueueSendFromISR(callbackQueue, &msg, 0);
+                xQueueSend(callbackQueue, &msg, 0);
                 return true;
             }
             else if (cbGeneral)
             {
                 msg.fid = 0xFF;
-                xQueueSendFromISR(callbackQueue, &msg, 0);
+                xQueueSend(callbackQueue, &msg, 0);
                 return true;
             }
             else
@@ -209,13 +209,13 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
                         if (thisListener->isCallbackActive(i)) 
 				        {
 					        msg.fid = 0x80000000ul + (listenerPos << 24ul) + i;
-                            xQueueSendFromISR(callbackQueue, &msg, 0);
+                            xQueueSend(callbackQueue, &msg, 0);
                             return true;
 				        }
 				        else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
 				        {
                             msg.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
-					        xQueueSendFromISR(callbackQueue, &msg, 0);
+					        xQueueSend(callbackQueue, &msg, 0);
                             return true;
 				        }
                     }
@@ -223,7 +223,7 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
             }
             
             //otherwise, send frame to input queue
-            xQueueSendFromISR(CAN_cfg.rx_queue, &frame, 0);
+            xQueueSend(CAN_cfg.rx_queue, &frame, 0);
             return true;
         }
     }
