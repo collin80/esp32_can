@@ -41,6 +41,8 @@
 #include "esp32_can.h"
 
 static TaskHandle_t intTaskBuiltIn = NULL;
+uint32_t biIntsCounter = 0;
+uint32_t biReadFrames = 0;
 
 extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
@@ -55,6 +57,8 @@ void CAN_Handle_Int()
     //Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
     CAN_frame_t __frame;
+
+    biIntsCounter++;
 
     // Read interrupt status and clear flags
     interrupt = (__CAN_IRQ_t)MODULE_CAN->IR.U;
@@ -136,6 +140,7 @@ void CAN_read_frame()
         	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
+    biReadFrames++;
     CAN0.processFrame(__frame);
 
     //Let the hardware know the frame has been read.
