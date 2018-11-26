@@ -40,11 +40,16 @@
 #include "esp32_can_builtin_lowlevel.h"
 #include "esp32_can.h"
 
+volatile uint32_t biIntsCounter = 0;
+volatile uint32_t biReadFrames = 0;
+
 extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
 	//Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
     CAN_frame_t __frame;
+
+    biIntsCounter++;
 
     // Read interrupt status and clear flags
     interrupt = (__CAN_IRQ_t)MODULE_CAN->IR.U;
@@ -83,6 +88,8 @@ void IRAM_ATTR CAN_read_frame()
 
 	//frame read buffer
 	CAN_frame_t __frame;
+    
+    biReadFrames++;
 
     //check if we have a queue. If not, operation is aborted.
     if (CAN_cfg.rx_queue == NULL)
