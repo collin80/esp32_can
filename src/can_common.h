@@ -128,6 +128,8 @@ class CAN_FRAME
 {
 public:
     CAN_FRAME();
+    CAN_FRAME(uint32_t id, std::initializer_list<uint8_t> dataBytes, uint8_t datalen);
+    CAN_FRAME(uint32_t id, std::initializer_list<uint8_t> dataBytes, uint8_t datalen, bool rtr, bool ext);
 
     BytesUnion data;    // 64 bits - lots of ways to access it.
     uint32_t id;        // 29 bit if ide set, 11 bit otherwise

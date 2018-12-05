@@ -12,6 +12,34 @@ CAN_FRAME::CAN_FRAME()
 	data.value = 0;
 }
 
+CAN_FRAME::CAN_FRAME(uint32_t id, std::initializer_list<uint8_t> dataBytes, uint8_t datalen)
+{
+	this->id = id;
+	fid = 0;
+	rtr = 0;
+	priority = 15;
+	extended = false;
+	timestamp = 0;
+	length = datalen;
+
+	//assert(dataBytes.size() <= std::size(data.uint8));
+    std::copy(dataBytes.begin(), dataBytes.end(), data.uint8);
+}
+
+CAN_FRAME::CAN_FRAME(uint32_t id, std::initializer_list<uint8_t> dataBytes, uint8_t datalen, bool rtr, bool ext)
+{
+	this->id = id;
+	fid = 0;
+	rtr = rtr;
+	priority = 15;
+	extended = ext;
+	timestamp = 0;
+	length = datalen;
+
+	//assert(dataBytes.size() <= std::size(data.uint8));
+    std::copy(dataBytes.begin(), dataBytes.end(), data.uint8);
+}
+
 CAN_FRAME_FD::CAN_FRAME_FD()
 {
 	id = 0;
