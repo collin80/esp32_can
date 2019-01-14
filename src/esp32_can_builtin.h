@@ -79,10 +79,15 @@ public:
 
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
 
+  friend void CAN_WatchDog_Builtin( void *pvParameters );
+
+protected:
+  bool initializedResources;
+  int cyclesSinceTraffic;
+
 private:
   // Pin variables
   ESP32_FILTER filters[NUM_FILTERS];
-  bool initializedResources;
 };
 
 extern QueueHandle_t callbackQueue;

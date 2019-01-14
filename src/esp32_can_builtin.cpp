@@ -23,12 +23,36 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
 {
     CAN_cfg.rx_pin_id = rxPin;
     CAN_cfg.tx_pin_id = txPin;
+    cyclesSinceTraffic = 0;
 }
 
 void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
 {
     CAN_cfg.rx_pin_id = rxPin;
     CAN_cfg.tx_pin_id = txPin;
+}
+
+//loops every 200ms incrementing the cyclesSinceTraffic counter. If it gets to 10 something might be wrong and we force a re-init to try to fix it
+void CAN_WatchDog_Builtin( void *pvParameters )
+{
+    ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
+
+     for(;;)
+     {
+        vTaskDelay( xDelay );
+        espCan->cyclesSinceTraffic++;
+        if (espCan->cyclesSinceTraffic > 9)
+        {
+            espCan->cyclesSinceTraffic = 0;
+            if (CAN_cfg.speed > 0 && CAN_cfg.speed <= 1000000ul && espCan->initializedResources == true) 
+            {
+                //Serial.println("XXXX");
+                CAN_stop();
+                CAN_init();
+            }
+        }
+     }
 }
 
 /*
@@ -89,6 +113,7 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(NUM_FILTERS)
         filters[i].configured = false;
     }
     initializedResources = false;
+    cyclesSinceTraffic = 0;
 }
 
 int ESP32CAN::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
@@ -134,6 +159,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
                   //func        desc    stack, params, priority, handle to task
         xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
+        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 5, NULL, 1);
         initializedResources = true;
     }
 
@@ -174,6 +200,8 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
 {
     CANListener *thisListener;
     CAN_FRAME msg;
+
+    cyclesSinceTraffic = 0; //reset counter to show that we are receiving traffic
 
     msg.id = frame.MsgID;
     msg.length = frame.FIR.B.DLC;

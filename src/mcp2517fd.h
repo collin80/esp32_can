@@ -81,6 +81,8 @@ class MCP2517FD : public CAN_COMMON
 	void handleTXFifoISR(int fifo);
 	void handleTXFifo(int fifo, CAN_FRAME_FD &newFrame);
     void initializeResources();
+	uint32_t packExtValue(uint32_t input);
+	uint32_t unpackExtValue(uint32_t input);
 
     // Pin variables
 	uint8_t _CS;

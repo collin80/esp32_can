@@ -276,5 +276,14 @@ int CAN_stop()
 	//enter reset mode
 	MODULE_CAN->MOD.B.RM = 1;
 
+    //clear interrupt flags
+    (void)MODULE_CAN->IR.U;
+
+    //clear error counters
+    MODULE_CAN->TXERR.U = 0;
+    MODULE_CAN->RXERR.U = 0;
+    (void)MODULE_CAN->ECC;
+
+
 	return 0;
 }

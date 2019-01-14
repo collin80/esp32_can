@@ -147,6 +147,23 @@ void MCP2517FD::setCSPin(uint8_t pin)
   digitalWrite(_CS,HIGH);
 }
 
+//Some sort of horrific closed head injury caused the designers of the MCP2517FD to store
+//29 bit extended frames with the 18 extended bits first then the 11 standard bits added higher up
+//instead of just plain making the 29 bit ID or mask contiguous in the 32 bit register. So, two routines
+//here to massage the data bits around to match
+
+//Take a 29 bit ID or MASK and turn it into a packed format suitable for the hardware register
+uint32_t MCP2517FD::packExtValue(uint32_t input)
+{
+  return ( ((input >> 18) & 0x7FF) + ((input & 0x3FFFF) << 11) ); 
+}
+
+//Reverse that process for when we receive IDs in the stupid format and want the real ID
+uint32_t MCP2517FD::unpackExtValue(uint32_t input)
+{
+  return ( ((input >> 11) & 0x3FFFF) + ((input & 0x7FF) << 18));
+}
+
 void MCP2517FD::initSPI()
 {
   // Set up SPI Communication
@@ -572,15 +589,28 @@ int MCP2517FD::_setFilter(uint32_t id, uint32_t mask, bool extended)
 //we've got 32 filters each with their own mask.
 int MCP2517FD::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
 {
+  uint32_t packedID, packedMask;
   if (mailbox > 31) return 0; //past end of valid mailbox #said
 
   //First up, make sure it's disabled as you can't set an enabled filter/mask combination
   Write8(ADDR_CiFLTCON + mailbox, 0);
   //Then we can directly write the filter and mask out - Using extended to augment bit 30 appropriately
-  mask |= 1 << 30; //filter/mask combo must match extended/std exactly. Won't allow both
-  if (extended) id |= 1 << 30; //only allow extended frames to match
-  Write(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * mailbox), id);
-  Write(ADDR_CiMASK + (CiFILTER_OFFSET * mailbox), mask);
+  packedID = id;
+  packedMask = mask;
+  if (extended) 
+  {
+      packedID = packExtValue(packedID);
+      packedMask = packExtValue(packedMask);
+  }
+  else
+  {
+      packedID = packedID & 0x7FF;
+      packedMask = packedMask & 0x7FF;
+  }
+  packedMask |= 1 << 30; //filter/mask combo must match extended/std exactly. Won't allow both
+  if (extended) packedID |= 1 << 30; //only allow extended frames to match
+  Write(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * mailbox), packedID);
+  Write(ADDR_CiMASK + (CiFILTER_OFFSET * mailbox), packedMask);
   Write8(ADDR_CiFLTCON + mailbox, 0x80 + 3); //Enable the filter and send it to FIFO3 which is the RX FIFO
 }
 
@@ -770,11 +800,11 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
     The next 32 bits are all the timestamp (in microseconds for us)
     Then each additional byte is a data byte (up to 64 bytes)
   */
-
-  message.id = buffer[0] & 0x1FFFFFFFull;
+  message.extended = (buffer[1] >> 4) & 1;
+  if (message.extended) message.id = unpackExtValue(buffer[0] & 0x1FFFFFFFull);
+  else message.id = buffer[0] & 0x7FF;
   message.fid = 0;
   message.priority = 0;
-  message.extended = (buffer[1] >> 4) & 1;
   message.fdMode = (buffer[1] >> 7) & 1;
   if (message.fdMode) 
     message.rrs = buffer[0] >> 29 & 1;
@@ -850,7 +880,9 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
        SEQ (sequence number) (Bits 9-15) - Optional sequence number for your reference 
     Then each additional byte is a data byte (up to 64 bytes)
   */
-  buffer[0] = message.id;
+  if (message.extended) buffer[0] = packExtValue(message.id);
+  else buffer[0] = message.id & 0x7FF;
+
   buffer[1] = (message.extended) ? (1 << 4) : 0;
   buffer[1] |= (message.fdMode) ? (1 << 7) : 0; 
   if (message.fdMode)
