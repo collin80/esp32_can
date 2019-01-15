@@ -1,4 +1,4 @@
-#include <can_common.h>
+#include <can_base.h>
 
 CAN_FRAME::CAN_FRAME()
 {

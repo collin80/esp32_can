@@ -32,7 +32,7 @@
 #define __ESP32_CAN__
 
 #include "Arduino.h"
-#include <can_common.h>
+#include "can_base.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
