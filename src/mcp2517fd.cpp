@@ -908,13 +908,16 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
 
   //only copy the number of data words we really have to.
   int copyWords = (dataBytes + 3) / 4;
-  for (int j = 0; j < copyWords; j++) buffer[2 + j] = message.data.uint32[j];
+  for (int j = 0; j < copyWords; j++) 
+  {
+    buffer[2 + j] = message.data.uint32[j];
+  }
 
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer((CMD_WRITE << 4) | ((address >> 8) & 0xF) );  
   SPI.transfer(address & 0xFF);
-  SPI.writeBytes((uint8_t *) &buffer[0], 8 + dataBytes); //and only write just as many bytes as we need to for this frame
+  SPI.writeBytes((uint8_t *) &buffer[0], 8 + (copyWords * 4)); //and only write just as many bytes as we need to for this frame
   digitalWrite(_CS,HIGH);
   SPI.endTransaction();
 }
