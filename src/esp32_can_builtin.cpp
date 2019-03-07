@@ -18,6 +18,9 @@ CAN_device_t CAN_cfg = {
 };
 
 QueueHandle_t callbackQueue;
+extern QueueHandle_t lowLevelRXQueue;
+
+extern volatile uint32_t needReset;
 
 ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
 {
@@ -32,7 +35,6 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     CAN_cfg.tx_pin_id = txPin;
 }
 
-//loops every 200ms incrementing the cyclesSinceTraffic counter. If it gets to 10 something might be wrong and we force a re-init to try to fix it
 void CAN_WatchDog_Builtin( void *pvParameters )
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
@@ -42,9 +44,10 @@ void CAN_WatchDog_Builtin( void *pvParameters )
      {
         vTaskDelay( xDelay );
         espCan->cyclesSinceTraffic++;
-        if (espCan->cyclesSinceTraffic > 9)
+        if (needReset)
         {
             espCan->cyclesSinceTraffic = 0;
+            needReset = 0;
             if (CAN_cfg.speed > 0 && CAN_cfg.speed <= 1000000ul && espCan->initializedResources == true) 
             {
                 //Serial.println("XXXX");
@@ -53,6 +56,21 @@ void CAN_WatchDog_Builtin( void *pvParameters )
             }
         }
      }
+}
+
+void task_LowLevelRX(void *pvParameters)
+{
+    ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    CAN_frame_t rxFrame;
+    
+    while (1)
+    {
+        //receive next CAN frame from queue and fire off the callback
+        if(xQueueReceive(lowLevelRXQueue, &rxFrame, portMAX_DELAY)==pdTRUE)
+        {
+            espCan->processFrame(rxFrame);
+        }
+    }
 }
 
 /*
@@ -157,13 +175,16 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         CAN_cfg.rx_queue = xQueueCreate(RX_BUFFER_SIZE,sizeof(CAN_frame_t));
         CAN_cfg.tx_queue = xQueueCreate(TX_BUFFER_SIZE,sizeof(CAN_frame_t));
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+        CAN_initRXQueue();
                   //func        desc    stack, params, priority, handle to task
         xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
+        xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 2048, this, 5, NULL, 1);
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 5, NULL, 1);
         initializedResources = true;
     }
 
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
+    needReset = 0;
     CAN_init();
 }
 
@@ -176,6 +197,7 @@ uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
 {
     CAN_stop();
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
+    needReset = 0;
     CAN_init();
 }
 
@@ -188,15 +210,17 @@ void ESP32CAN::enable()
 {
     CAN_stop();
     CAN_init();
+    needReset = 0;
 }
 
 void ESP32CAN::disable()
 {
     CAN_stop();
+    needReset = 0;
 }
 
-//This function does run in interrupt context
-bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
+//This function is too big to be running in interrupt context. Refactored so it doesn't.
+bool ESP32CAN::processFrame(CAN_frame_t &frame)
 {
     CANListener *thisListener;
     CAN_FRAME msg;
@@ -218,13 +242,13 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
             if (cbCANFrame[i])
             {
                 msg.fid = i;
-                xQueueSendFromISR(callbackQueue, &msg, 0);
+                xQueueSend(callbackQueue, &msg, 0);
                 return true;
             }
             else if (cbGeneral)
             {
                 msg.fid = 0xFF;
-                xQueueSendFromISR(callbackQueue, &msg, 0);
+                xQueueSend(callbackQueue, &msg, 0);
                 return true;
             }
             else
@@ -237,13 +261,13 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
                         if (thisListener->isCallbackActive(i)) 
 				        {
 					        msg.fid = 0x80000000ul + (listenerPos << 24ul) + i;
-                            xQueueSendFromISR(callbackQueue, &msg, 0);
+                            xQueueSend(callbackQueue, &msg, 0);
                             return true;
 				        }
 				        else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
 				        {
                             msg.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
-					        xQueueSendFromISR(callbackQueue, &msg, 0);
+					        xQueueSend(callbackQueue, &msg, 0);
                             return true;
 				        }
                     }
@@ -251,7 +275,7 @@ bool IRAM_ATTR ESP32CAN::processFrame(CAN_frame_t &frame)
             }
             
             //otherwise, send frame to input queue
-            xQueueSendFromISR(CAN_cfg.rx_queue, &frame, 0);
+            xQueueSend(CAN_cfg.rx_queue, &frame, 0);
             return true;
         }
     }

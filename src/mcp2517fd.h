@@ -25,6 +25,7 @@ class MCP2517FD : public CAN_COMMON
     //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
 	int _setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended);
     int _setFilter(uint32_t id, uint32_t mask, bool extended);
+	void resetHardware();
 	uint32_t init(uint32_t ul_baudrate);
     uint32_t beginAutoSpeed();
     uint32_t set_baudrate(uint32_t ul_baudrate);
@@ -72,6 +73,8 @@ class MCP2517FD : public CAN_COMMON
 
 	void InitFilters(bool permissive);
 	void intHandler();
+	void printDebug();
+
   private:
 	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
 	bool _initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq, uint8_t sjw, bool autoBaud);
@@ -83,6 +86,10 @@ class MCP2517FD : public CAN_COMMON
     void initializeResources();
 	uint32_t packExtValue(uint32_t input);
 	uint32_t unpackExtValue(uint32_t input);
+	uint32_t getErrorFlags();
+	uint32_t getCIBDIAG0();
+	uint32_t getCIBDIAG1();
+	uint32_t getBitConfig();
 
     // Pin variables
 	uint8_t _CS;
@@ -95,6 +102,7 @@ class MCP2517FD : public CAN_COMMON
     bool initializedResources; //have we set up queues and interrupts?
 	QueueHandle_t	rxQueue;
 	QueueHandle_t	txQueue[3];
+	uint32_t errorFlags;
 };
 
 extern MCP2517FD CAN1;

@@ -80,6 +80,8 @@ void CAN_read_frame();
  */
 int CAN_init(void);
 
+void CAN_initRXQueue();
+
 /**
  * \brief Send a can frame
  *

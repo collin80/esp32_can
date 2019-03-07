@@ -14,6 +14,7 @@ SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0);
 
 QueueHandle_t	callbackQueueMCP;
 static TaskHandle_t intTaskFD = NULL;
+bool needMCPReset = false;
 
 void IRAM_ATTR MCPFD_INTHandler() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -29,6 +30,59 @@ void task_MCPIntFD( void *pvParameters )
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
     CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
   }
+}
+
+//checks 5 times per second to see if a CAN error happened. Will reset the CAN hardware if so.
+void task_ResetWatcher(void *pvParameters)
+{
+  MCP2517FD* mcpCan = (MCP2517FD*)pvParameters;
+  const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
+
+  for(;;)
+  {
+    vTaskDelay( xDelay );
+    if (needMCPReset)
+    {
+      needMCPReset = false;
+      mcpCan->resetHardware();
+    }
+  }
+}
+
+//Reset the hardware to its last configured state
+//Also prints out the diag registers if you have debugging text enabled.
+//Saves then restores all filtering as well.
+void MCP2517FD::resetHardware()
+{
+  uint32_t filters[32];
+  uint32_t masks[32];
+  uint32_t ctrl[8]; //each ctrl reg has four filters so only 8 regs not 32
+  int idx;
+  #ifdef DEBUG_PRINT
+      Serial.print("Diag0: ");
+      Serial.println(getCIBDIAG0(), HEX);
+      Serial.print("Diag1: ");
+      Serial.println(getCIBDIAG1(), HEX);
+      Serial.print("ErrFlgs: ");
+      Serial.println(getErrorFlags(), HEX);
+#endif
+    
+  for (idx = 0; idx < 32; idx++)
+  {
+    filters[idx] = Read(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * idx));
+    masks[idx] = Read(ADDR_CiMASK + (CiFILTER_OFFSET * idx));
+  }
+  for (idx = 0; idx < 8; idx++) ctrl[idx] = Read(ADDR_CiFLTCON + 4 * idx);
+
+  if (inFDMode) initFD(savedNominalBaud, savedDataBaud);
+  else init(savedNominalBaud);
+
+  for (idx = 0; idx < 32; idx++)
+  {
+    Write(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * idx), filters[idx]);
+    Write(ADDR_CiMASK + (CiFILTER_OFFSET * idx), masks[idx]);
+  }
+  for (idx = 0; idx < 8; idx++) Write(ADDR_CiFLTCON + 4 * idx, ctrl[idx]);
 }
 
 /*
@@ -126,6 +180,7 @@ void MCP2517FD::initializeResources()
                            //func        desc    stack, params, priority, handle to task, which core to pin to
   xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 3072, this, 3, NULL, 0);
   xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 10, &intTaskFD, 0);
+  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 2048, this, 5, NULL, 0);
 
   initializedResources = true;
 
@@ -188,7 +243,7 @@ void MCP2517FD::initSPI()
   baud rate could be determined.  There must be two other active nodes on the bus!
 */
 int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq) {
-  return Init(CAN_Bus_Speed, Freq, 1);
+  return Init(CAN_Bus_Speed, Freq, 3);
 }
 
 int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
@@ -204,6 +259,7 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
       savedNominalBaud = CAN_Bus_Speed;
       savedFreq = Freq;
       running = 1;
+      errorFlags = 0;
 	    return CAN_Bus_Speed;
     }
   } 
@@ -222,6 +278,7 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
 			      savedNominalBaud = i;
 			      savedFreq = Freq;	
 			      running = 1;
+            errorFlags = 0;
 			      return i;
 		      }
 		    }
@@ -244,6 +301,7 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
       savedDataBaud = dataRate;
       savedFreq = 40;
       running = 1;
+      errorFlags = 0;
 	    return nominalRate;
     }
   } 
@@ -263,6 +321,7 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
             savedDataBaud = dataRate;
 			      savedFreq = 40;	
 			      running = 1;
+            errorFlags = 0;
 			      return i;
 		      }
 		    }
@@ -429,6 +488,7 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   {
     inFDMode = false;
     if (DEBUG_PRINT) Serial.println("MCP2517 Init Success");
+    errorFlags = 0;
     return true;
   }
   else 
@@ -549,6 +609,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   {
     inFDMode = true;
     if (DEBUG_PRINT) Serial.println("MCP2517 InitFD Success");
+    errorFlags = 0;
     return true;
   }
   else 
@@ -653,7 +714,7 @@ void MCP2517FD::enable()
 
 void MCP2517FD::disable()
 {
-    Mode(CAN_SLEEP_MODE);
+    Mode(CAN_CONFIGURATION_MODE);
 }
 
 bool MCP2517FD::sendFrame(CAN_FRAME& txFrame)
@@ -683,6 +744,63 @@ uint32_t MCP2517FD::get_rx_buff(CAN_FRAME &msg)
 uint32_t MCP2517FD::get_rx_buffFD(CAN_FRAME_FD &msg)
 {
     return GetRXFrame(msg);
+}
+
+uint32_t MCP2517FD::getErrorFlags()
+{
+    return errorFlags;
+}
+
+uint32_t MCP2517FD::getCIBDIAG0()
+{
+  return Read(ADDR_CiBDIAG0);
+}
+
+uint32_t MCP2517FD::getCIBDIAG1()
+{
+  return Read(ADDR_CiBDIAG1);
+}
+
+uint32_t MCP2517FD::getBitConfig()
+{
+  return Read(ADDR_CiNBTCFG);
+}
+
+//Prints to screen basically all of the important registers including debugging registers.
+void MCP2517FD::printDebug()
+{
+  Serial.println();
+  Serial.print("Diag0: ");
+  Serial.print(getCIBDIAG0(), HEX);
+  Serial.print("  Diag1: ");
+  Serial.print(getCIBDIAG1(), HEX);
+  Serial.print("  ErrFlags: ");
+  Serial.println(errorFlags, HEX);
+
+  Serial.print("Ctrl: ");
+  Serial.print(Read(ADDR_CiCON), HEX);
+  Serial.print("  NomBits: ");
+  Serial.print(Read(ADDR_CiNBTCFG), HEX);
+  Serial.print("  DataBits: ");
+  Serial.print(Read(ADDR_CiDBTCFG), HEX);
+  Serial.print("  TDC: ");
+  Serial.println(Read(ADDR_CiTDC), HEX);
+  
+  Serial.print("TxqCon: ");
+  Serial.print(Read(ADDR_CiTXQCON), HEX);
+  Serial.print("  TsCon: ");
+  Serial.print(Read(ADDR_CiTSCON), HEX);
+  Serial.print("  Int: ");
+  Serial.println(Read(ADDR_CiINT), HEX);
+
+  Serial.print("F0Ctrl: ");
+  Serial.print(Read(ADDR_CiFIFOCON), HEX);
+  Serial.print("  F1Ctrl: ");
+  Serial.print(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET), HEX);
+  Serial.print("  F2Ctrl: ");
+  Serial.print(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET * 2), HEX);
+  Serial.print("  F3Ctrl: ");
+  Serial.println(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET * 3), HEX);
 }
 
 void MCP2517FD::Reset() {
@@ -1008,8 +1126,6 @@ void MCP2517FD::intHandler(void) {
 
     // determine which interrupt flags have been set
     uint32_t interruptFlags = Read(ADDR_CiINT);
-    //Now, acknowledge the interrupts by clearing the intf bits
-    Write16(ADDR_CiINT, 0);
     
     if(interruptFlags & 1)  //Transmit FIFO interrupt
     {
@@ -1035,9 +1151,9 @@ void MCP2517FD::intHandler(void) {
     }
     else //didn't get TX interrupt but check if we've got msgs in FIFO and see if we can queue them into hardware
     {
-      if (uxQueueMessagesWaitingFromISR(txQueue[0]) > 0) handleTXFifoISR(0);
-      if (uxQueueMessagesWaitingFromISR(txQueue[1]) > 0) handleTXFifoISR(1);
-      if (uxQueueMessagesWaitingFromISR(txQueue[2]) > 0) handleTXFifoISR(2);
+      if (uxQueueMessagesWaiting(txQueue[0]) > 0) handleTXFifoISR(0);
+      if (uxQueueMessagesWaiting(txQueue[1]) > 0) handleTXFifoISR(1);
+      if (uxQueueMessagesWaiting(txQueue[2]) > 0) handleTXFifoISR(2);
     }
 
     if(interruptFlags & 2)  //Receive FIFO interrupt
@@ -1059,19 +1175,27 @@ void MCP2517FD::intHandler(void) {
     if (interruptFlags & (1 << 11)) //Receive Object Overflow
     {
       //once again, we know which FIFO must have overflowed - what to do about it though?
+      errorFlags |= 1;
     }
     if (interruptFlags & (1 << 12)) //System error
     {
-
+      errorFlags |= 2;
     }
     if (interruptFlags & (1 << 13)) //CANBus error
     {
-
+      errorFlags |= 4;
     }
     if (interruptFlags & (1 << 15)) //Invalid msg interrupt
     {
-
+      errorFlags |= 8;
     }
+    if (errorFlags > 0)
+    {
+      needMCPReset = true;
+    }
+
+    //Now, acknowledge the interrupts by clearing the intf bits
+    Write16(ADDR_CiINT, 0);
 }
 
 //TX fifos are 0, 1, 2
@@ -1087,11 +1211,11 @@ void MCP2517FD::handleTXFifoISR(int fifo)
 
   status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
   //While the FIFO has room and we still have frames to send
-  while ( (status & 1) && (uxQueueMessagesWaitingFromISR(txQueue[fifo]) > 0) )
+  while ( (status & 1) && (uxQueueMessagesWaiting(txQueue[fifo]) > 0) )
   {
     //get address to write to
     addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
-    if (xQueueReceiveFromISR(txQueue[fifo], &frame, NULL) != pdTRUE) return; //abort if we can't load a frame from the queue!
+    if (xQueueReceive(txQueue[fifo], &frame, NULL) != pdTRUE) return; //abort if we can't load a frame from the queue!
     LoadFrameBuffer( addr + 0x400, frame );
     wroteFrames = 1;
     Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo) + 1, 3); //Set UINC and TX_Request

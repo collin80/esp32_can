@@ -42,6 +42,8 @@
 
 volatile uint32_t biIntsCounter = 0;
 volatile uint32_t biReadFrames = 0;
+volatile uint32_t needReset = 0;
+QueueHandle_t lowLevelRXQueue;
 
 extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
@@ -57,7 +59,7 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
     // Handle TX complete interrupt
     if ((interrupt & __CAN_IRQ_TX) != 0) 
     {
-    	if (uxQueueMessagesWaiting(CAN_cfg.tx_queue) > 0)
+    	if (uxQueueMessagesWaitingFromISR(CAN_cfg.tx_queue) > 0)
         {
             xQueueReceiveFromISR(CAN_cfg.tx_queue, &__frame, NULL);
             CAN_write_frame(&__frame);
@@ -77,7 +79,7 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
                       | __CAN_IRQ_BUS_ERR				//0x80
 	)) != 0) 
     {
-    	/*handler*/
+    	needReset = 1;
     }
 }
 
@@ -124,7 +126,7 @@ void IRAM_ATTR CAN_read_frame()
         	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
-    CAN0.processFrame(__frame);
+    xQueueSendFromISR(lowLevelRXQueue, &__frame, 0);
 
     //Let the hardware know the frame has been read.
     MODULE_CAN->CMR.B.RRB = 1;
@@ -184,7 +186,6 @@ int IRAM_ATTR CAN_write_frame(const CAN_frame_t* p_frame)
 
 int CAN_init()
 {
-
 	//Time quantum
 	double __tq;
 
@@ -204,7 +205,7 @@ int CAN_init()
 	gpio_pad_select_gpio(CAN_cfg.rx_pin_id);
 
     //set to PELICAN mode
-	MODULE_CAN->CDR.B.CAN_M=0x1;
+	MODULE_CAN->CDR.B.CAN_M     =0x1;
 
 	//synchronization jump width is the same for all baud rates
 	MODULE_CAN->BTR0.B.SJW		=0x1;
@@ -262,7 +263,7 @@ int CAN_init()
     (void)MODULE_CAN->IR.U;
 
     //install CAN ISR
-    esp_intr_alloc(ETS_CAN_INTR_SOURCE,0,CAN_isr,NULL,NULL);
+    esp_intr_alloc(ETS_CAN_INTR_SOURCE, ESP_INTR_FLAG_IRAM, CAN_isr, NULL, NULL);
 
     //Showtime. Release Reset Mode.
     MODULE_CAN->MOD.B.RM = 0;
@@ -270,20 +271,22 @@ int CAN_init()
     return 0;
 }
 
+//allocates a small queue used to buffer frames that were received in the
+//interrupt handler but not yet processed by the rest of the code
+void CAN_initRXQueue()
+{
+    lowLevelRXQueue = xQueueCreate(4, sizeof(CAN_frame_t));
+}
+
 int CAN_stop()
 {
-
 	//enter reset mode
 	MODULE_CAN->MOD.B.RM = 1;
 
-    //clear interrupt flags
-    (void)MODULE_CAN->IR.U;
-
-    //clear error counters
-    MODULE_CAN->TXERR.U = 0;
-    MODULE_CAN->RXERR.U = 0;
-    (void)MODULE_CAN->ECC;
-
+    DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
+    DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
+    
+    MODULE_CAN->IER.U = 0; //enable no interrupts
 
 	return 0;
 }

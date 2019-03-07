@@ -462,7 +462,7 @@ void MCP2515::enable()
 
 void MCP2515::disable()
 {
-    Mode(MODE_SLEEP);
+    Mode(MODE_CONFIG); //should knock it off the CAN bus and keep it from doing anything
 }
 
 bool MCP2515::sendFrame(CAN_FRAME& txFrame)
