@@ -177,9 +177,9 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
         CAN_initRXQueue();
                   //func        desc    stack, params, priority, handle to task
-        xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 5, NULL);
-        xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 2048, this, 5, NULL, 1);
-        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 5, NULL, 1);
+        xTaskCreate(&task_CAN, "CAN_RX", 2048, this, 15, NULL);
+        xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 2048, this, 19, NULL, 1);
+        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL, 1);
         initializedResources = true;
     }
 

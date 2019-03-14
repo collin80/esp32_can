@@ -90,6 +90,7 @@ void IRAM_ATTR CAN_read_frame()
 
 	//frame read buffer
 	CAN_frame_t __frame;
+    BaseType_t xHigherPriorityTaskWoken;
     
     biReadFrames++;
 
@@ -126,10 +127,14 @@ void IRAM_ATTR CAN_read_frame()
         	__frame.data.u8[__byte_i] = MODULE_CAN->MBX_CTRL.FCTRL.TX_RX.EXT.data[__byte_i];
     }
 
-    xQueueSendFromISR(lowLevelRXQueue, &__frame, 0);
+    xQueueSendFromISR(lowLevelRXQueue, &__frame, &xHigherPriorityTaskWoken);
 
     //Let the hardware know the frame has been read.
     MODULE_CAN->CMR.B.RRB = 1;
+
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
 }
 
 bool CAN_TX_IsBusy()
@@ -275,7 +280,7 @@ int CAN_init()
 //interrupt handler but not yet processed by the rest of the code
 void CAN_initRXQueue()
 {
-    lowLevelRXQueue = xQueueCreate(4, sizeof(CAN_frame_t));
+    lowLevelRXQueue = xQueueCreate(8, sizeof(CAN_frame_t));
 }
 
 int CAN_stop()
