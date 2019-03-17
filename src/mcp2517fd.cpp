@@ -178,9 +178,9 @@ void MCP2517FD::initializeResources()
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
-  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 3072, this, 3, NULL, 0);
-  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 10, &intTaskFD, 0);
-  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 2048, this, 5, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 3072, this, 8, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2048, this, 19, &intTaskFD, 0);
+  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 2048, this, 7, NULL, 0);
 
   initializedResources = true;
 
@@ -1160,7 +1160,7 @@ void MCP2517FD::intHandler(void) {
     {
       //no need to ask which FIFO matched, there is only one RX FIFO configured in this library
       //So, ask for frames out of the FIFO until it no longer has any
-      status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * 2) );
+      status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * 3) );
       while (status & 1) // there is at least one message waiting to be received
       {
         //Get address to read from
@@ -1274,13 +1274,13 @@ void MCP2517FD::handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit)
   if (cbCANFrame[filterHit]) 
 	{
     frame.fid = filterHit;
-    xQueueSendFromISR(callbackQueueMCP, &frame, 0);
+    xQueueSend(callbackQueueMCP, &frame, 0);
     return;
 	}
 	else if (cbGeneral) 
 	{
 		frame.fid = 0xFF;
-    xQueueSendFromISR(callbackQueueMCP, &frame, 0);
+    xQueueSend(callbackQueueMCP, &frame, 0);
     return;
 	}
 	else
@@ -1293,18 +1293,18 @@ void MCP2517FD::handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit)
 				if (thisListener->isCallbackActive(filterHit)) 
 				{
 					frame.fid = 0x80000000ul + (listenerPos << 24ul) + filterHit;
-          xQueueSendFromISR(callbackQueueMCP, &frame, 0);
+          xQueueSend(callbackQueueMCP, &frame, 0);
           return;
 				}
 				else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
 				{
           frame.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
-					xQueueSendFromISR(callbackQueueMCP, &frame, 0);
+					xQueueSend(callbackQueueMCP, &frame, 0);
           return;
 				}
 			}
 		}
 	}
 	//if none of the callback types caught this frame then queue it in the buffer
-  xQueueSendFromISR(rxQueue, &frame, NULL);
+  xQueueSend(rxQueue, &frame, NULL);
 }

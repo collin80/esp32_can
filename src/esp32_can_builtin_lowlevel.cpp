@@ -280,7 +280,7 @@ int CAN_init()
 //interrupt handler but not yet processed by the rest of the code
 void CAN_initRXQueue()
 {
-    lowLevelRXQueue = xQueueCreate(8, sizeof(CAN_frame_t));
+    lowLevelRXQueue = xQueueCreate(12, sizeof(CAN_frame_t));
 }
 
 int CAN_stop()
