@@ -5,7 +5,7 @@
 #include "mcp2517fd_regs.h"
 #include <SPI.h>
 
-#define DEBUG_PRINT true
+#define DEBUG_PRINT false
 
 //20Mhz is the fastest we can go
 #define SPI_SPEED 20000000
