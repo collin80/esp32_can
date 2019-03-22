@@ -233,6 +233,9 @@ public:
 	void attachCANInterrupt(uint8_t mailBox, void (*cb)(CAN_FRAME *));
 	void detachCANInterrupt(uint8_t mailBox);
     bool supportsFDMode();
+    bool isFaulted();
+    bool hasRXFault();
+    bool hasTXFault();
 
     //pubic API for CAN-FD mode
     inline uint32_t readFD(CAN_FRAME_FD &msg) { return get_rx_buffFD(msg); }
@@ -258,6 +261,9 @@ protected:
     int numFilters;
     int enablePin;
     bool fdSupported;
+    bool faulted;
+    bool rxFault;
+    bool txFault;
 };
 
 #endif

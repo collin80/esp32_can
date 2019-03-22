@@ -32,11 +32,11 @@ void task_MCPIntFD( void *pvParameters )
   }
 }
 
-//checks 5 times per second to see if a CAN error happened. Will reset the CAN hardware if so.
+//checks ever 2 seconds to see if a CAN error happened. Will reset the CAN hardware if so.
 void task_ResetWatcher(void *pvParameters)
 {
   MCP2517FD* mcpCan = (MCP2517FD*)pvParameters;
-  const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
+  const TickType_t xDelay = 2000 / portTICK_PERIOD_MS;
 
   for(;;)
   {
@@ -260,6 +260,9 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
       savedFreq = Freq;
       running = 1;
       errorFlags = 0;
+      rxFault = false;
+      txFault = false;
+      faulted = false;
 	    return CAN_Bus_Speed;
     }
   } 
@@ -279,6 +282,9 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
 			      savedFreq = Freq;	
 			      running = 1;
             errorFlags = 0;
+            rxFault = false;
+            txFault = false;
+            faulted = false;
 			      return i;
 		      }
 		    }
@@ -302,6 +308,10 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
       savedFreq = 40;
       running = 1;
       errorFlags = 0;
+      rxFault = false;
+      txFault = false;
+      faulted = false;
+
 	    return nominalRate;
     }
   } 
@@ -322,6 +332,9 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
 			      savedFreq = 40;	
 			      running = 1;
             errorFlags = 0;
+            rxFault = false;
+            txFault = false;
+            faulted = false;
 			      return i;
 		      }
 		    }
@@ -489,6 +502,10 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
     inFDMode = false;
     if (DEBUG_PRINT) Serial.println("MCP2517 Init Success");
     errorFlags = 0;
+    rxFault = false;
+    txFault = false;
+    faulted = false;
+
     return true;
   }
   else 
@@ -610,6 +627,9 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     inFDMode = true;
     if (DEBUG_PRINT) Serial.println("MCP2517 InitFD Success");
     errorFlags = 0;
+    rxFault = false;
+    txFault = false;
+    faulted = false;
     return true;
   }
   else 
@@ -1190,8 +1210,39 @@ void MCP2517FD::intHandler(void) {
       errorFlags |= 8;
     }
     if (errorFlags > 0)
-    {
-      needMCPReset = true;
+    {      
+      uint32_t diagBits = getCIBDIAG1(); //get a detailed fault status
+
+      if (diagBits & 0x3030000) //either NBIT0 or NBIT1 error (or DBIT0, DBIT1)
+      {
+        txFault = true;
+        faulted = true;
+        needMCPReset = true; //if set true we'd auto reset the hardware when bit errors happen.
+      }
+      if (diagBits & 0x40000) //18 - NACK fault
+      {
+         //don't actually do a thing. A lack of ACK is not really an issue. Bus could just be disconnected
+      }
+      if (diagBits & 0x38380000) //19 - RX Fixed form, Bit stuff, or CRC error, either FD or not
+      {
+        rxFault = true;
+        faulted = true;
+        needMCPReset = true; //could reset when these errors happen. Maybe count errors to decide?
+      }  
+      if (diagBits & 0x800000) //23 - TXB0ERR - device went bus-off (and auto recovered)
+      {
+        //it's OK if it goes bus off and tries to recover. Don't reset as we might mess up the bus if we're insane
+      }  
+      if (diagBits & 0x40000000) //30 - ESI of RX FD message was set
+      {
+        rxFault = true;
+        faulted = true;
+      }
+      if (diagBits & 0x80000000) //31 - DLC mismatch during RX or TX
+      {
+        //allow a dlc mismatch and don't do anything
+        //rxFault = true;
+      }
     }
 
     //Now, acknowledge the interrupts by clearing the intf bits

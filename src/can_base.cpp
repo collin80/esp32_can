@@ -133,8 +133,41 @@ CAN_COMMON::CAN_COMMON(int numFilt)
     enablePin = 255;
 	busSpeed = 0;
 	fd_DataSpeed = 0;
+	faulted = false;
+    rxFault = false;
+    txFault = false;
 	fdSupported = false;
     for (int i = 0; i < SIZE_LISTENERS; i++) listener[i] = 0;
+}
+
+/**
+ * \brief Returns whether a serious fault has occurred.
+ *
+ * \ret  Bool indicating whether interface has any sort of fault or not
+ */
+bool CAN_COMMON::isFaulted()
+{
+	return faulted;
+}
+
+/**
+ * \brief Returns whether a serious reception fault has occurred.
+ *
+ * \ret  Bool indicating whether interface has a fault in receiving frames
+ */
+bool CAN_COMMON::hasRXFault()
+{
+	return rxFault;
+}
+
+/**
+ * \brief Returns whether a serious frame transmission fault has occurred.
+ *
+ * \ret  Bool indicating whether interface has a fault in transmitting frames
+ */
+bool CAN_COMMON::hasTXFault()
+{
+	return txFault;
 }
 
 /**
