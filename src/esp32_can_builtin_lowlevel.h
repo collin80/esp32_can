@@ -71,7 +71,7 @@ typedef struct {
 }CAN_frame_t;
 
 
-void CAN_read_frame();
+BaseType_t CAN_read_frame();
 
 /**
  * \brief Initialize the CAN Module

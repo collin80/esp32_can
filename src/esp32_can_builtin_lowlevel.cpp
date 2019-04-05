@@ -45,11 +45,18 @@ volatile uint32_t biReadFrames = 0;
 volatile uint32_t needReset = 0;
 QueueHandle_t lowLevelRXQueue;
 
+static portMUX_TYPE builtincan_spinlock = portMUX_INITIALIZER_UNLOCKED;
+#define CANBI_ENTER_CRITICAL()  portENTER_CRITICAL(&builtincan_spinlock)
+#define CANBI_EXIT_CRITICAL()   portEXIT_CRITICAL(&builtincan_spinlock)
+
 extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 {
 	//Interrupt flag buffer
 	__CAN_IRQ_t interrupt;
     CAN_frame_t __frame;
+    BaseType_t xHigherPriorityTaskWoken = false;
+
+    CANBI_ENTER_CRITICAL();
 
     biIntsCounter++;
 
@@ -68,7 +75,10 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
 
     // Handle RX frame available interrupt
     if ((interrupt & __CAN_IRQ_RX) != 0)
-    	CAN_read_frame();
+    {
+        for (int rxFrames = 0; rxFrames < MODULE_CAN->RMC.B.RMC; rxFrames++) //read all frames from the hardware RX queue
+    	    if (CAN_read_frame()) xHigherPriorityTaskWoken = true;
+    }
 
     // Handle error interrupts.
     if ((interrupt & (__CAN_IRQ_ERR						//0x4
@@ -81,9 +91,14 @@ extern "C" void IRAM_ATTR CAN_isr(void *arg_p)
     {
     	needReset = 1;
     }
+    CANBI_EXIT_CRITICAL();
+
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
 }
 
-void IRAM_ATTR CAN_read_frame()
+BaseType_t IRAM_ATTR CAN_read_frame()
 {
 	//byte iterator
 	uint8_t __byte_i;
@@ -99,7 +114,7 @@ void IRAM_ATTR CAN_read_frame()
     {
         // Let the hardware know the frame has been read.
         MODULE_CAN->CMR.B.RRB = 1;
-        return;
+        return false;
     }
 
 	//get FIR
@@ -132,9 +147,7 @@ void IRAM_ATTR CAN_read_frame()
     //Let the hardware know the frame has been read.
     MODULE_CAN->CMR.B.RRB = 1;
 
-    if (xHigherPriorityTaskWoken) {
-        portYIELD_FROM_ISR();
-    }
+    return xHigherPriorityTaskWoken;
 }
 
 bool CAN_TX_IsBusy()
