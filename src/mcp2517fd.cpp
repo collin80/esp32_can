@@ -1221,7 +1221,8 @@ void MCP2517FD::intHandler(void) {
       }
       if (diagBits & 0x40000) //18 - NACK fault
       {
-         //don't actually do a thing. A lack of ACK is not really an issue. Bus could just be disconnected
+         //Just set the TXfault flag not the genera faulted flag. This might be just a lack of CAN bus
+         txFault = true;
       }
       if (diagBits & 0x38380000) //19 - RX Fixed form, Bit stuff, or CRC error, either FD or not
       {
