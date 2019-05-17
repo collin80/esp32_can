@@ -3,7 +3,7 @@
 
 #include "Arduino.h"
 #include "mcp2517fd_defines.h"
-#include "can_base.h"
+#include <can_common.h>
 
 //#define DEBUG_SETUP
 #define RX_BUFFER_SIZE	64

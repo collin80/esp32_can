@@ -8,4 +8,7 @@ extern MCP2517FD CAN1;
 //extern MCP2515 CAN1;
 
 extern volatile uint32_t biIntsCounter;
-extern volatile uint32_t biReadFrames; 
+extern volatile uint32_t biReadFrames;
+
+#define Can0 CAN0
+#define Can1 CAN1
