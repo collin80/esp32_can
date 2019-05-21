@@ -146,16 +146,25 @@ void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
     }
 }
 
-MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
-  pinMode(CS_Pin, OUTPUT);
-  digitalWrite(CS_Pin,HIGH);
-  pinMode(INT_Pin,INPUT);
-  digitalWrite(INT_Pin,HIGH);
+void MCP2517FD::setINTPin(uint8_t pin)
+{
+  detachInterrupt(_INT);
+  _INT = pin;
+  pinMode(_INT,INPUT);
+  digitalWrite(_INT,HIGH);
+  attachInterrupt(_INT, MCPFD_INTHandler, FALLING);
+}
 
-  attachInterrupt(INT_Pin, MCPFD_INTHandler, FALLING);
-  
-  _CS = CS_Pin;
-  _INT = INT_Pin;
+void MCP2517FD::setCSPin(uint8_t pin)
+{
+  _CS = pin;
+  pinMode(_CS, OUTPUT);
+  digitalWrite(_CS,HIGH);
+}
+
+MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
+  setCSPin(CS_Pin);
+  setINTPin(INT_Pin);
   
   savedNominalBaud = 0;
   savedDataBaud = 0;
@@ -184,22 +193,6 @@ void MCP2517FD::initializeResources()
 
   initializedResources = true;
 
-}
-
-void MCP2517FD::setINTPin(uint8_t pin)
-{
-  detachInterrupt(_INT);
-  _INT = pin;
-  pinMode(_INT,INPUT);
-  digitalWrite(_INT,HIGH);
-  attachInterrupt(_INT, MCPFD_INTHandler, FALLING);
-}
-
-void MCP2517FD::setCSPin(uint8_t pin)
-{
-  _CS = pin;
-  pinMode(_CS, OUTPUT);
-  digitalWrite(_CS,HIGH);
 }
 
 //Some sort of horrific closed head injury caused the designers of the MCP2517FD to store
