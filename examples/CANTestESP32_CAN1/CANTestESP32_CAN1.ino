@@ -1,6 +1,9 @@
 //Demo of the second can interface Can1 which uses the MCP2517FD module
 
-#include "esp32_can.h"
+#include "mcp2517fd.h"
+
+            //CS, INT
+MCP2517FD CAN1(5, 27);
 
 void setup() {
 	Serial.begin(115200);
