@@ -50,7 +50,7 @@ void CAN_WatchDog_Builtin( void *pvParameters )
             needReset = 0;
             if (CAN_cfg.speed > 0 && CAN_cfg.speed <= 1000000ul && espCan->initializedResources == true) 
             {
-                //Serial.println("XXXX");
+                if (espCan->debuggingMode)   Serial.println("CAN0 Forced Reset!");
                 CAN_stop();
                 CAN_init();
             }
@@ -157,11 +157,13 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
             return i;
         }
     }
+    if (debuggingMode) Serial.println("Could not set filter!");
     return -1;
 }
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 {
+    if (debuggingMode) Serial.println("Built in CAN Init");
     for (int i = 0; i < NUM_FILTERS; i++)
     {
         filters[i].id = 0;
@@ -276,6 +278,7 @@ bool ESP32CAN::processFrame(CAN_frame_t &frame)
             
             //otherwise, send frame to input queue
             xQueueSend(CAN_cfg.rx_queue, &frame, 0);
+            if (debuggingMode) Serial.write('_');
             return true;
         }
     }
@@ -295,10 +298,12 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     if (CAN_TX_IsBusy()) //hardware already sending, queue for sending when possible
     {
         xQueueSend(CAN_cfg.tx_queue,&__TX_frame,0);
+        if (debuggingMode) Serial.write('<');
     }
     else //hardware is free, send immediately
     {
         CAN_write_frame(&__TX_frame);
+        if (debuggingMode) Serial.write('>');
     }
 }
 

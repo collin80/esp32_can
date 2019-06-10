@@ -7,7 +7,7 @@
 
 //#define DEBUG_SETUP
 #define RX_BUFFER_SIZE	64
-#define TX_BUFFER_SIZE  16  //there are three buffers though so (value * 3)
+#define TX_BUFFER_SIZE  32
 
 #define NUM_FILTERS 32
 
@@ -101,7 +101,7 @@ class MCP2517FD : public CAN_COMMON
 	volatile uint8_t running; //1 if out of init code, 0 if still trying to initialize (auto baud detecting)
     bool initializedResources; //have we set up queues and interrupts?
 	QueueHandle_t	rxQueue;
-	QueueHandle_t	txQueue[3];
+	QueueHandle_t	txQueue;
 	uint32_t errorFlags;
 };
 
