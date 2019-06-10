@@ -33,12 +33,8 @@
 
 #include "Arduino.h"
 #include "mcp2515_defs.h"
+#include "mcp25xxfd.h"
 #include <can_common.h>
-
-//#define DEBUG_SETUP
-
-#define RX_BUFFER_SIZE	32
-#define TX_BUFFER_SIZE  16
 
 class MCP2515 : public CAN_COMMON
 {

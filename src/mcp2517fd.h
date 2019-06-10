@@ -2,12 +2,11 @@
 #define MCP2517_h
 
 #include "Arduino.h"
+#include "mcp25xxfd.h"
 #include "mcp2517fd_defines.h"
 #include <can_common.h>
 
 //#define DEBUG_SETUP
-#define RX_BUFFER_SIZE	64
-#define TX_BUFFER_SIZE  16  //there are three buffers though so (value * 3)
 
 #define NUM_FILTERS 32
 

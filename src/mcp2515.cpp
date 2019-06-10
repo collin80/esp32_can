@@ -32,7 +32,6 @@
 #include "SPI.h"
 #include "mcp2515.h"
 #include "mcp2515_defs.h"
-#include "esp32_can.h"
 
 SPISettings mcpSPISettings(8000000, MSBFIRST, SPI_MODE0);
 
@@ -73,10 +72,11 @@ void task_MCP15( void *pvParameters )
 
 void task_MCPInt15( void *pvParameters )
 {
+  MCP2515* mcpCan = (MCP2515*)pvParameters;
   while (1)
   {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
-    CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
+    mcpCan->intHandler(); //not truly an interrupt handler anymore but still kind of
   }
 }
 
