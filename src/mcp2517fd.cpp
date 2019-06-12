@@ -348,17 +348,17 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
   return 0;
 }
 
-//chunks of the hardware init that are in common between standard and FD mode
-//Setup timer hardware, FIFOs, and Transmit Queue
-void MCP2517FD::commonInit()
+
+void MCP2517FD::txQueueSetup()
 {
   uint32_t debugVal;
-  if (debuggingMode) Serial.println("commonInit()");
-
   REG_CiTXQCON txQCon;
-  REG_CiFIFOCON fifoCon;
-  REG_CiTSCON tsCon;
+  const TickType_t xDelay = 1;
 
+  txQCon.word = 0x400; //set FRESET to reset this FIFO
+  Write(ADDR_CiTXQCON, txQCon.word);
+  vTaskDelay(xDelay);
+  
   //transmit queue set up
   txQCon.word = 0;
   txQCon.txBF.PayLoadSize = 7; //64 bytes
@@ -372,6 +372,19 @@ void MCP2517FD::commonInit()
     debugVal = Read(ADDR_CiTXQCON);
     Serial.println(debugVal, BIN);
   }
+}
+
+//chunks of the hardware init that are in common between standard and FD mode
+//Setup timer hardware, FIFOs, and Transmit Queue
+void MCP2517FD::commonInit()
+{
+  uint32_t debugVal;
+  if (debuggingMode) Serial.println("commonInit()");
+
+  REG_CiFIFOCON fifoCon;
+  REG_CiTSCON tsCon;
+
+  txQueueSetup();
 
   //builtin timerstamping setup
   tsCon.bF.TBCPrescaler = 39; //40x slow down means 1us resolution
@@ -806,12 +819,12 @@ void MCP2517FD::printDebug()
 
   Serial.print("F0Ctrl: ");
   Serial.print(Read(ADDR_CiFIFOCON), HEX);
+  Serial.print("  F0 Status: ");
+  Serial.print(Read(ADDR_CiFIFOSTA), HEX);
   Serial.print("  F1Ctrl: ");
   Serial.print(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET), HEX);
-  Serial.print("  F2Ctrl: ");
-  Serial.print(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET * 2), HEX);
-  Serial.print("  F3Ctrl: ");
-  Serial.println(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET * 3), HEX);
+  Serial.print("  F1 Status: ");
+  Serial.println(Read(ADDR_CiFIFOSTA + CiFIFO_OFFSET), HEX);  
 }
 
 void MCP2517FD::Reset() {
@@ -1135,15 +1148,15 @@ void MCP2517FD::intHandler(void) {
     // determine which interrupt flags have been set
     uint32_t interruptFlags = Read(ADDR_CiINT);
     
-    if(interruptFlags & 1)  //Transmit FIFO interrupt
-    {
+    //if(interruptFlags & 1)  //Transmit FIFO interrupt
+    //{
       //Only FIFO0 is TX so no need to ask for which FIFO. 
-      Write8(ADDR_CiFIFOCON, 0x80); //Keep FIFO as TX but disable Queue Empty Interrupt
-      handleTXFifoISR(0);      
-    }
-    else //didn't get TX interrupt but check if we've got msgs in FIFO and see if we can queue them into hardware
+      //Write8(ADDR_CiFIFOCON, 0x80); //Keep FIFO as TX but disable Queue Empty Interrupt
+      //handleTXFifoISR(0);      
+    //}
+    //else //didn't get TX interrupt but check if we've got msgs in FIFO and see if we can queue them into hardware
     {
-      if (uxQueueMessagesWaiting(txQueue) > 0) handleTXFifoISR(0);
+      if (uxQueueMessagesWaiting(txQueue) > 0) handleTXFifoISR(0); //if we have messages to send then try to queue them in the TX fifo
     }
 
     if(interruptFlags & 2)  //Receive FIFO interrupt
@@ -1180,7 +1193,8 @@ void MCP2517FD::intHandler(void) {
       errorFlags |= 8;
     }
     if (errorFlags > 0)
-    {      
+    { 
+      //if (debuggingMode) Serial.write('?');
       uint32_t diagBits = getCIBDIAG1(); //get a detailed fault status
 
       if (diagBits & 0x3030000) //either NBIT0 or NBIT1 error (or DBIT0, DBIT1)
@@ -1200,7 +1214,7 @@ void MCP2517FD::intHandler(void) {
         faulted = true;
         needMCPReset = true; //could reset when these errors happen. Maybe count errors to decide?
       }  
-      if (diagBits & 0x800000) //23 - TXB0ERR - device went bus-off (and auto recovered)
+      if (diagBits & 0x800000) //23 - TXBOERR - device went bus-off (and auto recovered)
       {
         //it's OK if it goes bus off and tries to recover. Don't reset as we might mess up the bus if we're insane
       }  
@@ -1215,6 +1229,7 @@ void MCP2517FD::intHandler(void) {
         //rxFault = true;
       }
     }
+    
 
     //Now, acknowledge the interrupts by clearing the intf bits
     Write16(ADDR_CiINT, 0);
@@ -1232,8 +1247,9 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   //if (fifo > 2) return;
 
   status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
+  if ((status & 0x30) == 0x30) txQueueSetup(); //if the queue registered a fault then reset it
   //While the FIFO has room and we still have frames to send
-  while ( (status & 1) && (uxQueueMessagesWaiting(txQueue) > 0) )
+  while ( (status & 1) && (uxQueueMessagesWaiting(txQueue) > 0) ) //while fifo is not full and we have messages waiting
   {
     if (debuggingMode) 
     {
@@ -1249,7 +1265,7 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   }
   if (wroteFrames != 0)
   {
-    Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo), 0x84); //Keep as TX queue and enable interrupt for queue empty
+    //Write8(ADDR_CiFIFOCON + (CiFIFO_OFFSET * fifo), 0x84); //Keep as TX queue and enable interrupt for queue empty
     if (debuggingMode) Serial.write('\"');
   }
 }
