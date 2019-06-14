@@ -74,13 +74,13 @@ class MCP2517FD : public CAN_COMMON
 	void InitFilters(bool permissive);
 	void intHandler();
 	void printDebug();
+	void txQueueSetup();
 
   private:
 	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
 	bool _initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq, uint8_t sjw, bool autoBaud);
 	void initSPI();
-	void commonInit();
-	void txQueueSetup();
+	void commonInit();	
     void handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit);
 	void handleTXFifoISR(int fifo);
 	void handleTXFifo(int fifo, CAN_FRAME_FD &newFrame);

@@ -13,6 +13,7 @@ SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0);
 QueueHandle_t	callbackQueueMCP;
 static TaskHandle_t intTaskFD = NULL;
 bool needMCPReset = false;
+bool needTXFIFOReset = false;
 
 /*
 void IRAM_ATTR MCPFD_INTHandler() {
@@ -50,6 +51,11 @@ void task_ResetWatcher(void *pvParameters)
       needMCPReset = false;
       if (mcpCan->debuggingMode) Serial.println("Reset 2517FD hardware");
       mcpCan->resetHardware();
+    }
+    if (needTXFIFOReset)
+    {
+      needTXFIFOReset = false;
+      mcpCan->txQueueSetup();
     }
   }
 }
@@ -1247,7 +1253,7 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   //if (fifo > 2) return;
 
   status = Read( ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo) );
-  if ((status & 0x30) == 0x30) txQueueSetup(); //if the queue registered a fault then reset it
+  if ((status & 0x30) == 0x30) needTXFIFOReset = true; //if the queue registered a fault then set flag to have it reset
   //While the FIFO has room and we still have frames to send
   while ( (status & 1) && (uxQueueMessagesWaiting(txQueue) > 0) ) //while fifo is not full and we have messages waiting
   {
