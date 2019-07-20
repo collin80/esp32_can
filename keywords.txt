@@ -4,70 +4,70 @@
 #######################################
 # Datatypes (KEYWORD1)
 #######################################
-CAN_FRAME	    KEYWORD1
+CAN_FRAME	KEYWORD1
 CAN_FRAME_FD	KEYWORD1
-CAN0            KEYWORD1
-CAN1            KEYWORD1
-CANListener     KEYWORD1
+CAN0	KEYWORD1
+CAN1	KEYWORD1
+CANListener	KEYWORD1
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
-gotFrame                KEYWORD2
-gotFrameFD              KEYWORD2
-setCallback             KEYWORD2
-removeCallback          KEYWORD2
-setGeneralHandler       KEYWORD2
-removeGeneralHandler    KEYWORD2
-initialize              KEYWORD2
-isCallbackActive        KEYWORD2
-setNumFilters           KEYWORD2
-beginAutoSpeed          KEYWORD2
-set_baudrate            KEYWORD2
-setListenOnlyMode       KEYWORD2
-enable                  KEYWORD2
-disable                 KEYWORD2
-sendFrame               KEYWORD2
-available               KEYWORD2
-set_baudrateFD          KEYWORD2
-sendFrameFD             KEYWORD2
-read                    KEYWORD2
-watchFor                KEYWORD2
-watchForRange           KEYWORD2
-begin                   KEYWORD2
-getBusSpeed             KEYWORD2
-setRXFilter             KEYWORD2
-attachObj               KEYWORD2
-detachObj               KEYWORD2
-setGeneralCallback      KEYWORD2
-setCallback             KEYWORD2
-removeCallback          KEYWORD2
-removeCallback          KEYWORD2
-removeGeneralCallback   KEYWORD2
-attachCANInterrupt      KEYWORD2
-detachCANInterrupt      KEYWORD2
-supportsFDMode          KEYWORD2
-readFD                  KEYWORD2
-beginFD                 KEYWORD2
-getDataSpeedFD          KEYWORD2
-setGeneralCallbackFD    KEYWORD2
-setCallbackFD           KEYWORD2
-removeGeneralCallbackFD KEYWORD2
-removeCallbackFD        KEYWORD2
+gotFrame	KEYWORD2
+gotFrameFD	KEYWORD2
+setCallback	KEYWORD2
+removeCallback	KEYWORD2
+setGeneralHandler	KEYWORD2
+removeGeneralHandler	KEYWORD2
+initialize	KEYWORD2
+isCallbackActive	KEYWORD2
+setNumFilters	KEYWORD2
+beginAutoSpeed	KEYWORD2
+set_baudrate	KEYWORD2
+setListenOnlyMode	KEYWORD2
+enable	KEYWORD2
+disable	KEYWORD2
+sendFrame	KEYWORD2
+available	KEYWORD2
+set_baudrateFD	KEYWORD2
+sendFrameFD	KEYWORD2
+read	KEYWORD2
+watchFor	KEYWORD2
+watchForRange	KEYWORD2
+begin	KEYWORD2
+getBusSpeed	KEYWORD2
+setRXFilter	KEYWORD2
+attachObj	KEYWORD2
+detachObj	KEYWORD2
+setGeneralCallback	KEYWORD2
+setCallback	KEYWORD2
+removeCallback	KEYWORD2
+removeCallback	KEYWORD2
+removeGeneralCallback	KEYWORD2
+attachCANInterrupt	KEYWORD2
+detachCANInterrupt	KEYWORD2
+supportsFDMode	KEYWORD2
+readFD	KEYWORD2
+beginFD	KEYWORD2
+getDataSpeedFD	KEYWORD2
+setGeneralCallbackFD	KEYWORD2
+setCallbackFD	KEYWORD2
+removeGeneralCallbackFD	KEYWORD2
+removeCallbackFD	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
 #######################################
 
-CAN_BPS_1000K   LITERAL1
+CAN_BPS_1000K	LITERAL1
 CAN_BPS_800K	LITERAL1
-CAN_BPS_500K    LITERAL1
+CAN_BPS_500K	LITERAL1
 CAN_BPS_250K	LITERAL1
 CAN_BPS_125K	LITERAL1
-CAN_BPS_50K		LITERAL1
+CAN_BPS_50K	LITERAL1
 CAN_BPS_33333	LITERAL1
-CAN_BPS_25K		LITERAL1
+CAN_BPS_25K	LITERAL1
 CAN_DEFAULT_BAUD	LITERAL1
-CAN_DEFAULT_FD_RATE LITERAL1
+CAN_DEFAULT_FD_RATE	LITERAL1
 
 
 
