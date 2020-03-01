@@ -130,8 +130,8 @@ void MCP2515::initializeResources()
   callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
-  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 2048, this, 3, NULL, 0);
-  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 2048, this, 10, &intDelegateTask, 0);
+  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 4096, this, 3, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 4096, this, 10, &intDelegateTask, 0);
 
   initializedResources = true;
 }

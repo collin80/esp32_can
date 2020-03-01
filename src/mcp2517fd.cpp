@@ -199,8 +199,8 @@ void MCP2517FD::initializeResources()
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
-  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 3072, this, 8, NULL, 0);
-  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 3072, this, 19, &intTaskFD, 0);
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 8192, this, 8, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 6144, this, 19, &intTaskFD, 0);
   xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 2048, this, 7, NULL, 0);
 
   initializedResources = true;
