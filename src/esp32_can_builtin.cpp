@@ -161,7 +161,7 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
     return -1;
 }
 
-uint32_t ESP32CAN::init(uint32_t ul_baudrate)
+void ESP32CAN::_init()
 {
     if (debuggingMode) Serial.println("Built in CAN Init");
     for (int i = 0; i < NUM_FILTERS; i++)
@@ -184,7 +184,11 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL, 1);
         initializedResources = true;
     }
+}
 
+uint32_t ESP32CAN::init(uint32_t ul_baudrate)
+{
+    _init();
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     needReset = 0;
     CAN_init();
@@ -192,7 +196,39 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 
 uint32_t ESP32CAN::beginAutoSpeed()
 {
+    const uint32_t bauds[7] = {1000,500,250,125,800,80,33}; //list of speeds to try, scaled down by 1000x
+    bool oldLOM = CAN_GetListenOnlyMode();
 
+    _init();
+
+    CAN_stop();
+    CAN_SetListenOnly(true);
+    for (int i = 0; i < 7; i++)
+    {
+        CAN_cfg.speed = (CAN_speed_t)bauds[i];
+        CAN_stop(); //stop hardware so we can reconfigure it
+        needReset = 0;
+        Serial.print("Trying Speed ");
+        Serial.print(bauds[i] * 1000);
+        CAN_init(); //set it up
+        delay(600); //wait a while
+        if (cyclesSinceTraffic < 2) //only would happen if there had been traffic
+        {
+            CAN_stop();
+            CAN_SetListenOnly(oldLOM);
+            CAN_init();
+            Serial.println(" SUCCESS!");
+            return bauds[i] * 1000;
+        }
+        else
+        {
+            Serial.println(" FAILED.");
+        }
+        
+    }
+    Serial.println("None of the tested CAN speeds worked!");
+    CAN_stop();
+    return 0;
 }
 
 uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)

@@ -98,6 +98,7 @@ int CAN_write_frame(const CAN_frame_t* p_frame);
 bool CAN_TX_IsBusy();
 
 void CAN_SetListenOnly(bool mode);
+bool CAN_GetListenOnlyMode();
 
 /**
  * \brief Stops the CAN Module

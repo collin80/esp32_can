@@ -64,6 +64,7 @@ public:
   //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
   int _setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended);
   int _setFilter(uint32_t id, uint32_t mask, bool extended);
+  void _init();
   uint32_t init(uint32_t ul_baudrate);
   uint32_t beginAutoSpeed();
   uint32_t set_baudrate(uint32_t ul_baudrate);

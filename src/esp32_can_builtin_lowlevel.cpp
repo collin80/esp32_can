@@ -161,6 +161,11 @@ void CAN_SetListenOnly(bool mode)
     CAN_init();
 }
 
+bool CAN_GetListenOnlyMode()
+{
+    return MODULE_CAN->MOD.B.LOM;
+}
+
 int IRAM_ATTR CAN_write_frame(const CAN_frame_t* p_frame)
 {
 
