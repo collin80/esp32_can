@@ -10,30 +10,16 @@
 
 SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0); 
 
-QueueHandle_t	callbackQueueMCP;
-static TaskHandle_t intTaskFD = NULL;
-bool needMCPReset = false;
-bool needTXFIFOReset = false;
-
-/*
-void IRAM_ATTR MCPFD_INTHandler() {
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  if (!intTaskFD) return; //if it hasn't been configured yet then abort
-  vTaskNotifyGiveFromISR(intTaskFD, &xHigherPriorityTaskWoken); //send notice to the handler task that it can do the SPI transaction now
-  if (xHigherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR(); //if vTaskNotify will wake the task (and it should) then yield directly to that task now
-}
-*/
-
-
 //Modified to loop, waiting for 1ms then pretending an interrupt came in
 //basically switches to a polled system where we do not pay attention to actual interrupts
 void task_MCPIntFD( void *pvParameters )
 {
   const TickType_t iDelay = portTICK_PERIOD_MS;
+  MCP2517FD* mcpCan = (MCP2517FD*)pvParameters;
   while (1)
   {
     vTaskDelay(iDelay);
-    CAN1.intHandler(); //not truly an interrupt handler anymore
+    mcpCan->intHandler(); //not truly an interrupt handler anymore
   }
 }
 
@@ -53,19 +39,19 @@ void task_ResetWatcher(void *pvParameters)
     ctrlVal = (ctrlVal >> 21) & 7;
     if (ctrlVal == 7) 
     {
-      needMCPReset = true;
+      mcpCan->needMCPReset = true;
       if (mcpCan->debuggingMode) Serial.println("!!!RESTRICTED MODE!!!");     
     }
 
-    if (needMCPReset)
+    if (mcpCan->needMCPReset)
     {
-      needMCPReset = false;
+      mcpCan->needMCPReset = false;
       if (mcpCan->debuggingMode) Serial.println("Reset 2517FD hardware");
       mcpCan->resetHardware();
     }
-    if (needTXFIFOReset)
+    if (mcpCan->needTXFIFOReset)
     {
-      needTXFIFOReset = false;
+      mcpCan->needTXFIFOReset = false;
       mcpCan->txQueueSetup();
     }
   }
@@ -126,9 +112,12 @@ void task_MCPCAN( void *pvParameters )
     while (1)
     {
         //receive next CAN frame from queue and fire off the callback
-        if(xQueueReceive(callbackQueueMCP, &rxFrame, portMAX_DELAY)==pdTRUE)
+        if (mcpCan->callbackQueueMCP)
         {
-            mcpCan->sendCallback(&rxFrame);
+            if(xQueueReceive(mcpCan->callbackQueueMCP, &rxFrame, portMAX_DELAY)==pdTRUE)
+            {
+                mcpCan->sendCallback(&rxFrame);
+            }
         }
     }
 }
@@ -199,10 +188,17 @@ void MCP2517FD::initializeResources()
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
-  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 8192, this, 8, NULL, 0);
-  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 6144, this, 19, &intTaskFD, 0);
-  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 2048, this, 7, NULL, 0);
-
+  xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 4096, this, 8, &taskHandleMCPCAN, 0);
+  xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2560, this, 19, &intTaskFD, 0);
+  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 1536, this, 7, &taskHandleReset, 0);
+/*
+  if (debuggingMode)
+  {
+      Serial.print("Task Handle For MCPCAN: ");Serial.println((uint32_t)taskHandleMCPCAN, HEX);
+      Serial.print("Task Handle For Reset Handler: ");Serial.println((uint32_t)taskHandleReset, HEX);
+      Serial.print("Task Handle For PseudoInt: ");Serial.println((uint32_t)intTaskFD, HEX);
+  }
+*/
   initializedResources = true;
 
 }

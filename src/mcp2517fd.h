@@ -76,6 +76,13 @@ class MCP2517FD : public CAN_COMMON
 	void printDebug();
 	void txQueueSetup();
 
+    QueueHandle_t callbackQueueMCP;
+    TaskHandle_t intTaskFD = NULL;
+    TaskHandle_t taskHandleMCPCAN = NULL;
+    TaskHandle_t taskHandleReset = NULL;
+    bool needMCPReset = false;
+    bool needTXFIFOReset = false;
+
   private:
 	bool _init(uint32_t baud, uint8_t freq, uint8_t sjw, bool autoBaud);
 	bool _initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq, uint8_t sjw, bool autoBaud);
