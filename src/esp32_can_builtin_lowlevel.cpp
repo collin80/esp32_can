@@ -247,12 +247,19 @@ int CAN_init()
 			MODULE_CAN->BTR1.B.TSEG1	=0x6;
 			__tq = 0.125;
 			break;
+        case (CAN_speed_t)33:
+            //changes everything...
+            MODULE_CAN->BTR1.B.TSEG2	=0x6;
+            MODULE_CAN->BTR1.B.TSEG1	=0xf; //16 + 1 + 7 = 24
+            __tq = ((float)1000.0f/33.3f) / 24.0f;
+            break;
 		default:
 			MODULE_CAN->BTR1.B.TSEG1	=0xc;
 			__tq = ((float)1000/CAN_cfg.speed) / 16;
 	}
 
 	//set baud rate prescaler
+    //APB_CLK_FREQ should be 80M
 	MODULE_CAN->BTR0.B.BRP=(uint8_t)round((((APB_CLK_FREQ * __tq) / 2) - 1)/1000000)-1;
 
     /* Set sampling
