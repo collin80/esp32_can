@@ -115,7 +115,7 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
   _INT = INT_Pin;
   
   savedBaud = 0;
-  savedFreq = 0;
+  savedFreq = 16;
   running = 0; 
   inhibitTransactions = false;
   initializedResources = false;
