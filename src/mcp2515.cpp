@@ -115,7 +115,7 @@ MCP2515::MCP2515(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(6) {
   _INT = INT_Pin;
   
   savedBaud = 0;
-  savedFreq = 0;
+  savedFreq = 16;
   running = 0; 
   inhibitTransactions = false;
   initializedResources = false;
@@ -435,17 +435,17 @@ int MCP2515::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, boo
 
 uint32_t MCP2515::init(uint32_t ul_baudrate)
 {
-    Init(ul_baudrate, 16);
+    Init(ul_baudrate, savedFreq);
 }
 
 uint32_t MCP2515::beginAutoSpeed()
 {
-    Init(0, 16);
+    Init(0, savedFreq);
 }
 
 uint32_t MCP2515::set_baudrate(uint32_t ul_baudrate)
 {
-    Init(ul_baudrate, 16);
+    Init(ul_baudrate, savedFreq);
 }
 
 void MCP2515::setListenOnlyMode(bool state)
