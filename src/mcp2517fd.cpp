@@ -1,9 +1,8 @@
 #include "Arduino.h"
-#include "SPI.h"
+#include <SPI.h>
 #include "mcp2517fd.h"
 #include "mcp2517fd_defines.h"
 #include "mcp2517fd_regs.h"
-#include <SPI.h>
 
 //20Mhz is the fastest we can go
 #define SPI_SPEED 10000000
@@ -182,23 +181,17 @@ void MCP2517FD::initializeResources()
 {
   if (initializedResources) return;
 
+  //queues allocate the requested space plus 96 bytes overhead
   rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
   txQueue = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
-
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
+  //Tasks take up the stack you allocate here in bytes plus 388 bytes overhead            
   xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 4096, this, 8, &taskHandleMCPCAN, 0);
   xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2560, this, 19, &intTaskFD, 0);
   xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 1536, this, 7, &taskHandleReset, 0);
-/*
-  if (debuggingMode)
-  {
-      Serial.print("Task Handle For MCPCAN: ");Serial.println((uint32_t)taskHandleMCPCAN, HEX);
-      Serial.print("Task Handle For Reset Handler: ");Serial.println((uint32_t)taskHandleReset, HEX);
-      Serial.print("Task Handle For PseudoInt: ");Serial.println((uint32_t)intTaskFD, HEX);
-  }
-*/
+
   initializedResources = true;
 
 }
