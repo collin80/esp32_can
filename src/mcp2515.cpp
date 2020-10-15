@@ -73,10 +73,11 @@ void task_MCP15( void *pvParameters )
 
 void task_MCPInt15( void *pvParameters )
 {
+  MCP2515* mcpCan = (MCP2515*)pvParameters;
   while (1)
   {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
-    CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
+    mcpCan->intHandler(); //not truly an interrupt handler anymore but still kind of
   }
 }
 
