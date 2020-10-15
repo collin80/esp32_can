@@ -380,7 +380,11 @@ int MCP2515::_setFilter(uint32_t id, uint32_t mask, bool extended)
 
     for (int i = 0; i < 6; i++)
     {
-        GetRXFilter(i, filterVal, isExtended);
+        if (i < 3)
+            GetRXFilter(FILTER0 + (i * 4), filterVal, isExtended);
+        else
+            GetRXFilter(FILTER3 + ((i-3) * 4), filterVal, isExtended);
+
         if (filterVal == 0 && isExtended == extended) //empty filter. Let's fill it and leave
         {
             if (i < 2)
