@@ -50,7 +50,7 @@ void CAN_WatchDog_Builtin( void *pvParameters )
             needReset = 0;
             if (CAN_cfg.speed > 0 && CAN_cfg.speed <= 1000000ul && espCan->initializedResources == true) 
             {
-                if (espCan->debuggingMode)   Serial.println("CAN0 Forced Reset!");
+                if (espCan->debuggingMode)   Serial.println("Builtin CAN Forced Reset!");
                 CAN_stop();
                 CAN_init();
             }
