@@ -130,6 +130,7 @@
 #define RXB0EID8        0x63
 #define RXB0EID0        0x64
 #define RXB0DLC         0x65
+#define RXB0BUKT        0x04
 #define RXB0D0          0x66
 #define RXB0D1          0x67
 #define RXB0D2          0x68

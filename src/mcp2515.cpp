@@ -459,6 +459,29 @@ void MCP2515::setListenOnlyMode(bool state)
     else Mode(MODE_NORMAL);
 }
 
+void MCP2515::setBuffer0RolloverBUKT(bool enable) {
+    const byte oldMode = Read(CANSTAT);
+
+    if (oldMode != MODE_CONFIG) {
+        if (!Mode(MODE_CONFIG)) {
+            Serial.println("Unable to change to config mode to set BUKT");
+            return;
+        }
+    }
+
+    byte oldValue = Read(RXB0CTRL);
+
+    if (enable) {
+        Write(RXB0CTRL, oldValue | RXB0BUKT);
+    } else {
+        Write(RXB0CTRL, oldValue & ~RXB0BUKT);
+    }
+
+    if (oldMode != MODE_CONFIG) {
+        Mode(oldMode);
+    }
+}
+
 void MCP2515::enable()
 {
     Mode(MODE_NORMAL);
