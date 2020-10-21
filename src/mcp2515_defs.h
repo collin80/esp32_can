@@ -60,6 +60,8 @@
 #define ERRIF			0x20
 #define WAKIF			0x40
 #define MERRF			0x80
+// EFLG
+#define EFLG_ERRORMASK  0xF8
 
 // Configuration Registers
 #define CANSTAT         0x0E
