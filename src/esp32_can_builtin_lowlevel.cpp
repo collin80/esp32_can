@@ -211,9 +211,13 @@ int CAN_init()
 	//Time quantum
 	double __tq;
 
+    CANBI_ENTER_CRITICAL();
+
     //enable module
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_CLK_EN_REG, DPORT_CAN_CLK_EN);
     DPORT_CLEAR_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG, DPORT_CAN_RST);
+
+    MODULE_CAN->MOD.B.RM = 1; //first thing once module is enabled at hardware level is to make sure it is in reset
 
     //configure TX pin
     gpio_set_level(CAN_cfg.tx_pin_id, 1);
@@ -229,6 +233,10 @@ int CAN_init()
     //set to PELICAN mode
 	MODULE_CAN->CDR.B.CAN_M     =0x1;
 
+    MODULE_CAN->IER.U = 0; //disable all interrupt sources until we're ready
+    //clear interrupt flags
+    (void)MODULE_CAN->IR.U;
+    
 	//synchronization jump width is the same for all baud rates
 	MODULE_CAN->BTR0.B.SJW		=0x1;
 
@@ -296,6 +304,8 @@ int CAN_init()
 
     //Showtime. Release Reset Mode.
     MODULE_CAN->MOD.B.RM = 0;
+
+    CANBI_EXIT_CRITICAL();
 
     return 0;
 }
