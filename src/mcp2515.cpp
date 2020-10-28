@@ -73,10 +73,11 @@ void task_MCP15( void *pvParameters )
 
 void task_MCPInt15( void *pvParameters )
 {
+  MCP2515* mcpCan = (MCP2515*)pvParameters;
   while (1)
   {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
-    CAN1.intHandler(); //not truly an interrupt handler anymore but still kind of
+    mcpCan->intHandler(); //not truly an interrupt handler anymore but still kind of
   }
 }
 
@@ -380,7 +381,11 @@ int MCP2515::_setFilter(uint32_t id, uint32_t mask, bool extended)
 
     for (int i = 0; i < 6; i++)
     {
-        GetRXFilter(i, filterVal, isExtended);
+        if (i < 3)
+            GetRXFilter(FILTER0 + (i * 4), filterVal, isExtended);
+        else
+            GetRXFilter(FILTER3 + ((i-3) * 4), filterVal, isExtended);
+
         if (filterVal == 0 && isExtended == extended) //empty filter. Let's fill it and leave
         {
             if (i < 2)
@@ -453,6 +458,29 @@ void MCP2515::setListenOnlyMode(bool state)
     if (state)
         Mode(MODE_LISTEN);
     else Mode(MODE_NORMAL);
+}
+
+void MCP2515::setBuffer0RolloverBUKT(bool enable) {
+    const byte oldMode = Read(CANSTAT);
+
+    if (oldMode != MODE_CONFIG) {
+        if (!Mode(MODE_CONFIG)) {
+            Serial.println("Unable to change to config mode to set BUKT");
+            return;
+        }
+    }
+
+    byte oldValue = Read(RXB0CTRL);
+
+    if (enable) {
+        Write(RXB0CTRL, oldValue | RXB0BUKT);
+    } else {
+        Write(RXB0CTRL, oldValue & ~RXB0BUKT);
+    }
+
+    if (oldMode != MODE_CONFIG) {
+        Mode(oldMode);
+    }
 }
 
 void MCP2515::enable()
