@@ -61,7 +61,15 @@
 #define WAKIF			0x40
 #define MERRF			0x80
 // EFLG
-#define EFLG_ERRORMASK  0xF8
+#define EFLG_ERRORMASK  0xF8    // the first 5 flags (below) are error, the last 3 are warn
+#define RX1OVR          0x80
+#define RX0OVR          0x40
+#define TXBO            0x20
+#define TXEP            0x10
+#define RXEP            0x08
+#define TXWAR           0x04
+#define RXWAR           0x02
+#define EWARN           0x01
 
 // Configuration Registers
 #define CANSTAT         0x0E

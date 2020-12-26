@@ -1018,10 +1018,16 @@ void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 
 bool MCP2515::isInErrorState() {
     byte errorRegisterContents = Read(EFLG);
-    return (errorRegisterContents & EFLG_ERRORMASK);
+   if (errorRegisterContents & EFLG_ERRORMASK) {
+        // Serial.print("MCP2515 is in error state.  Register EFLG contains ");
+        // Serial.println(errorRegisterContents);
+        return true;
+   } else {
+        return false;
+   }
 }
 
 void MCP2515::resetErrors() {
-    Write(CANINTF, 0);     // acknowledge any interrupts
-    Write(EFLG, 0);        // clear the error flags
+    BitModify(CANINTF, 0xFF, 0);        // acknowledge any interrupts
+    BitModify(EFLG, RX1OVR | RX0OVR, 0);    // clear the error flags
 }
