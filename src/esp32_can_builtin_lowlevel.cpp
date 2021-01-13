@@ -255,7 +255,7 @@ int CAN_init()
 			MODULE_CAN->BTR1.B.TSEG1	=0x6;
 			__tq = 0.125;
 			break;
-        case (CAN_speed_t)33:
+        case CAN_SPEED_33KBPS:
             //changes everything...
             MODULE_CAN->BTR1.B.TSEG2	=0x6;
             MODULE_CAN->BTR1.B.TSEG1	=0xf; //16 + 1 + 7 = 24

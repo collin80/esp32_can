@@ -6,10 +6,10 @@
 #include <can_common.h>
 
 //#define DEBUG_SETUP
-#define RX_BUFFER_SIZE	64
-#define TX_BUFFER_SIZE  32
+#define FD_RX_BUFFER_SIZE	64
+#define FD_TX_BUFFER_SIZE  32
 
-#define NUM_FILTERS 32
+#define FD_NUM_FILTERS 32
 
 class MCP2517FD : public CAN_COMMON
 {

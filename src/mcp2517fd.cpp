@@ -34,7 +34,7 @@ void task_ResetWatcher(void *pvParameters)
     vTaskDelay( xDelay );
     
     //read CiCon then see if operation mode is b111/7 which is restricted mode. If so we reset
-    uint32_t ctrlVal = mcpCan->Read(ADDR_CiCON);
+    ctrlVal = mcpCan->Read(ADDR_CiCON);
     ctrlVal = (ctrlVal >> 21) & 7;
     if (ctrlVal == 7) 
     {
@@ -182,8 +182,8 @@ void MCP2517FD::initializeResources()
   if (initializedResources) return;
 
   //queues allocate the requested space plus 96 bytes overhead
-  rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
-  txQueue = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
+  rxQueue = xQueueCreate(FD_RX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
+  txQueue = xQueueCreate(FD_TX_BUFFER_SIZE, sizeof(CAN_FRAME_FD));
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
@@ -535,9 +535,6 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   REG_CiNBTCFG nominalCfg;
   REG_CiDBTCFG dataCfg;
   REG_CiCON canConfig;
-  REG_CiTXQCON txQCon;
-  REG_CiFIFOCON fifoCon;
-  REG_CiTSCON tsCon;
   int tseg1, tseg2;
 
   uint32_t neededTQ;
@@ -707,26 +704,27 @@ int MCP2517FD::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, b
   Write(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * mailbox), packedID);
   Write(ADDR_CiMASK + (CiFILTER_OFFSET * mailbox), packedMask);
   Write8(ADDR_CiFLTCON + mailbox, 0x80 + 1); //Enable the filter and send it to FIFO1 which is the RX FIFO
+  return mailbox;
 }
 
 uint32_t MCP2517FD::init(uint32_t ul_baudrate)
 {
-    Init(ul_baudrate, 40);
+    return Init(ul_baudrate, 40);
 }
 
 uint32_t MCP2517FD::beginAutoSpeed()
 {
-    Init(0, 40);
+    return Init(0, 40);
 }
 
 uint32_t MCP2517FD::set_baudrate(uint32_t ul_baudrate)
 {
-  Init(ul_baudrate, 40);
+    return Init(ul_baudrate, 40);
 }
 
 uint32_t MCP2517FD::set_baudrateFD(uint32_t nominalSpeed, uint32_t dataSpeed)
 {
-  _initFD(nominalSpeed, dataSpeed, 40, 4, false);
+    return _initFD(nominalSpeed, dataSpeed, 40, 4, false);
 }
 
 void MCP2517FD::setListenOnlyMode(bool state)
@@ -754,12 +752,18 @@ void MCP2517FD::disable()
 bool MCP2517FD::sendFrame(CAN_FRAME& txFrame)
 {
     CAN_FRAME_FD temp;
-    if (canToFD(txFrame, temp)) EnqueueTX(temp);
+    if (canToFD(txFrame, temp)) 
+    {
+        EnqueueTX(temp);
+        return true;
+    }
+    return false;
 }
 
 bool MCP2517FD::sendFrameFD(CAN_FRAME_FD& txFrame)
 {
     EnqueueTX(txFrame);
+    return true;
 }
 
 bool MCP2517FD::rx_avail()
@@ -1144,7 +1148,7 @@ void MCP2517FD::InitFilters(bool permissive) {
 
 //Places the given frame into the receive queue
 void IRAM_ATTR MCP2517FD::EnqueueRX(CAN_FRAME_FD& newFrame) {
-	xQueueSend(rxQueue, &newFrame, NULL);
+	xQueueSend(rxQueue, &newFrame, 0);
 }
 
 //Places the given frame either into a hardware FIFO (if there is space)
@@ -1288,7 +1292,7 @@ void MCP2517FD::handleTXFifoISR(int fifo)
     }
     //get address to write to
     addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
-    if (xQueueReceive(txQueue, &frame, NULL) != pdTRUE) return; //abort if we can't load a frame from the queue!
+    if (xQueueReceive(txQueue, &frame, 0) != pdTRUE) return; //abort if we can't load a frame from the queue!
     LoadFrameBuffer( addr + 0x400, frame );
     wroteFrames = 1;
     status = Read(ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo));

@@ -126,8 +126,8 @@ void MCP2515::initializeResources()
 {
   if (initializedResources) return;
 
-  rxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(CAN_FRAME));
-  txQueue = xQueueCreate(TX_BUFFER_SIZE, sizeof(CAN_FRAME));
+  rxQueue = xQueueCreate(MCP_RX_BUFFER_SIZE, sizeof(CAN_FRAME));
+  txQueue = xQueueCreate(MCP_TX_BUFFER_SIZE, sizeof(CAN_FRAME));
   callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
@@ -436,21 +436,23 @@ int MCP2515::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, boo
         SetRXFilter(FILTER0 + (mailbox * 4), id, extended);
     else
         SetRXFilter(FILTER3 + ((mailbox-3) * 4), id, extended);
+
+    return mailbox;
 }
 
 uint32_t MCP2515::init(uint32_t ul_baudrate)
 {
-    Init(ul_baudrate, savedFreq);
+    return Init(ul_baudrate, savedFreq);
 }
 
 uint32_t MCP2515::beginAutoSpeed()
 {
-    Init(0, savedFreq);
+    return Init(0, savedFreq);
 }
 
 uint32_t MCP2515::set_baudrate(uint32_t ul_baudrate)
 {
-    Init(ul_baudrate, savedFreq);
+    return Init(ul_baudrate, savedFreq);
 }
 
 void MCP2515::setListenOnlyMode(bool state)
@@ -496,6 +498,7 @@ void MCP2515::disable()
 bool MCP2515::sendFrame(CAN_FRAME& txFrame)
 {
     EnqueueTX(txFrame);
+    return true;
 }
 
 bool MCP2515::rx_avail()

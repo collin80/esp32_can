@@ -121,9 +121,9 @@ void ESP32CAN::sendCallback(CAN_FRAME *frame)
     }
 }
 
-ESP32CAN::ESP32CAN() : CAN_COMMON(NUM_FILTERS) 
+ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS) 
 {
-    for (int i = 0; i < NUM_FILTERS; i++)
+    for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
         filters[i].id = 0;
         filters[i].mask = 0;
@@ -136,7 +136,7 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(NUM_FILTERS)
 
 int ESP32CAN::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
 {
-    if (mailbox < NUM_FILTERS)
+    if (mailbox < BI_NUM_FILTERS)
     {
         filters[mailbox].id = id & mask;
         filters[mailbox].mask = mask;
@@ -149,7 +149,7 @@ int ESP32CAN::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bo
 
 int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
 {
-    for (int i = 0; i < NUM_FILTERS; i++)
+    for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
         if (!filters[i].configured) 
         {
@@ -164,7 +164,7 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
 void ESP32CAN::_init()
 {
     if (debuggingMode) Serial.println("Built in CAN Init");
-    for (int i = 0; i < NUM_FILTERS; i++)
+    for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
         filters[i].id = 0;
         filters[i].mask = 0;
@@ -174,8 +174,8 @@ void ESP32CAN::_init()
 
     if (!initializedResources) {
                                  //Queue size, item size
-        CAN_cfg.rx_queue = xQueueCreate(RX_BUFFER_SIZE,sizeof(CAN_frame_t));
-        CAN_cfg.tx_queue = xQueueCreate(TX_BUFFER_SIZE,sizeof(CAN_frame_t));
+        CAN_cfg.rx_queue = xQueueCreate(BI_RX_BUFFER_SIZE,sizeof(CAN_frame_t));
+        CAN_cfg.tx_queue = xQueueCreate(BI_TX_BUFFER_SIZE,sizeof(CAN_frame_t));
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
         CAN_initRXQueue();
                   //func        desc    stack, params, priority, handle to task
@@ -191,7 +191,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
     _init();
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     needReset = 0;
-    CAN_init();
+    return CAN_init();
 }
 
 uint32_t ESP32CAN::beginAutoSpeed()
@@ -236,7 +236,7 @@ uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
     CAN_stop();
     CAN_cfg.speed = (CAN_speed_t)(ul_baudrate / 1000);
     needReset = 0;
-    CAN_init();
+    return CAN_init();
 }
 
 void ESP32CAN::setListenOnlyMode(bool state)
@@ -271,7 +271,7 @@ bool ESP32CAN::processFrame(CAN_frame_t &frame)
     msg.extended = frame.FIR.B.FF;
     for (int i = 0; i < 8; i++) msg.data.byte[i] = frame.data.u8[i];
     
-    for (int i = 0; i < NUM_FILTERS; i++)
+    for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
         if (!filters[i].configured) continue;
         if ((msg.id & filters[i].mask) == filters[i].id && (filters[i].extended == msg.extended))
@@ -341,6 +341,7 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
         CAN_write_frame(&__TX_frame);
         if (debuggingMode) Serial.write('>');
     }
+    return true;
 }
 
 bool ESP32CAN::rx_avail()

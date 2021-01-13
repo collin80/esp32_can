@@ -43,9 +43,9 @@
 #include "esp32_can_builtin_lowlevel.h"
 
 //#define DEBUG_SETUP
-#define NUM_FILTERS 32
-#define RX_BUFFER_SIZE	64
-#define TX_BUFFER_SIZE  16
+#define BI_NUM_FILTERS 32
+#define BI_RX_BUFFER_SIZE	64
+#define BI_TX_BUFFER_SIZE  16
 
 typedef struct
 {
@@ -88,7 +88,7 @@ protected:
 
 private:
   // Pin variables
-  ESP32_FILTER filters[NUM_FILTERS];
+  ESP32_FILTER filters[BI_NUM_FILTERS];
 };
 
 extern QueueHandle_t callbackQueue;

@@ -36,6 +36,8 @@
 
 /** \brief CAN Node Bus speed */
 typedef enum  {
+    CAN_SPEED_33KBPS =33,
+    CAN_SPEED_80KBPS =80,
 	CAN_SPEED_100KBPS=100, 				/**< \brief CAN Node runs at 100kBit/s. */
 	CAN_SPEED_125KBPS=125, 				/**< \brief CAN Node runs at 125kBit/s. */
 	CAN_SPEED_250KBPS=250, 				/**< \brief CAN Node runs at 250kBit/s. */
