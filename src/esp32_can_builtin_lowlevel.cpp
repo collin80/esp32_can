@@ -307,7 +307,7 @@ int CAN_init()
 
     CANBI_EXIT_CRITICAL();
 
-    return 0;
+    return true;
 }
 
 //allocates a small queue used to buffer frames that were received in the
