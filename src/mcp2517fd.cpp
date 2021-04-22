@@ -7,7 +7,7 @@
 //20Mhz is the fastest we can go
 #define SPI_SPEED 10000000
 
-SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0); 
+SPISettings fdSPISettings(SPI_SPEED, MSBFIRST, SPI_MODE0);
 
 //Modified to loop, waiting for 1ms then pretending an interrupt came in
 //basically switches to a polled system where we do not pay attention to actual interrupts
@@ -32,14 +32,14 @@ void task_ResetWatcher(void *pvParameters)
   for(;;)
   {
     vTaskDelay( xDelay );
-    
+
     //read CiCon then see if operation mode is b111/7 which is restricted mode. If so we reset
     ctrlVal = mcpCan->Read(ADDR_CiCON);
     ctrlVal = (ctrlVal >> 21) & 7;
-    if (ctrlVal == 7) 
+    if (ctrlVal == 7)
     {
       mcpCan->needMCPReset = true;
-      if (mcpCan->debuggingMode) Serial.println("!!!RESTRICTED MODE!!!");     
+      if (mcpCan->debuggingMode) Serial.println("!!!RESTRICTED MODE!!!");
     }
 
     if (mcpCan->needMCPReset)
@@ -74,7 +74,7 @@ void MCP2517FD::resetHardware()
       Serial.print("ErrFlgs: ");
       Serial.println(getErrorFlags(), HEX);
   }
-    
+
   for (idx = 0; idx < 32; idx++)
   {
     filters[idx] = Read(ADDR_CiFLTOBJ + (CiFILTER_OFFSET * idx));
@@ -164,14 +164,14 @@ MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
   //digitalWrite(INT_Pin,HIGH);
 
   //attachInterrupt(INT_Pin, MCPFD_INTHandler, FALLING);
-  
+
   _CS = CS_Pin;
   _INT = INT_Pin;
-  
+
   savedNominalBaud = 0;
   savedDataBaud = 0;
   savedFreq = 0;
-  running = 0; 
+  running = 0;
   inFDMode = false;
   fdSupported = true;
   initializedResources = false;
@@ -187,7 +187,7 @@ void MCP2517FD::initializeResources()
   //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
   callbackQueueMCP = xQueueCreate(32, sizeof(CAN_FRAME_FD));
                            //func        desc    stack, params, priority, handle to task, which core to pin to
-  //Tasks take up the stack you allocate here in bytes plus 388 bytes overhead            
+  //Tasks take up the stack you allocate here in bytes plus 388 bytes overhead
   xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 4096, this, 8, &taskHandleMCPCAN, 0);
   xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 2560, this, 19, &intTaskFD, 0);
   xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 1536, this, 7, &taskHandleReset, 0);
@@ -220,7 +220,7 @@ void MCP2517FD::setCSPin(uint8_t pin)
 //Take a 29 bit ID or MASK and turn it into a packed format suitable for the hardware register
 uint32_t MCP2517FD::packExtValue(uint32_t input)
 {
-  return ( ((input >> 18) & 0x7FF) + ((input & 0x3FFFF) << 11) ); 
+  return ( ((input >> 18) & 0x7FF) + ((input & 0x3FFFF) << 11) );
 }
 
 //Reverse that process for when we receive IDs in the stupid format and want the real ID
@@ -243,13 +243,13 @@ void MCP2517FD::initSPI()
 
 /*
   Initialize MCP2517FD
-  
+
   int CAN_Bus_Speed = transfer speed in kbps (or raw CAN speed in bits per second)
   int Freq = MCP2517FD oscillator frequency in MHz
   int SJW = Synchronization Jump Width Length bits - 1 to 4 (see data sheet)
-  
+
   returns baud rate set
-  
+
   Sending a bus speed of 0 kbps initiates AutoBaud and returns zero if no
   baud rate could be determined.  There must be two other active nodes on the bus!
 */
@@ -276,7 +276,7 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
       faulted = false;
 	    return CAN_Bus_Speed;
     }
-  } 
+  }
   else {
 	  for(i = 20; i < 1000; i = i + 5) {
 	    if(_init(i, Freq, 1, true)) {
@@ -290,7 +290,7 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
 		        // to get here we must have received something without errors
 		        Mode(CAN_NORMAL_MODE);
 			      savedNominalBaud = i;
-			      savedFreq = Freq;	
+			      savedFreq = Freq;
 			      running = 1;
             errorFlags = 0;
             rxFault = false;
@@ -325,7 +325,7 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
 
 	    return nominalRate;
     }
-  } 
+  }
   else {
 	  for(i = 20; i < 1000; i = i + 5) {
 	    if(_initFD(i, dataRate, 40, 4, true)) {
@@ -340,7 +340,7 @@ uint32_t MCP2517FD::initFD(uint32_t nominalRate, uint32_t dataRate)
 		        Mode(CAN_NORMAL_MODE);
 			      savedNominalBaud = i;
             savedDataBaud = dataRate;
-			      savedFreq = 40;	
+			      savedFreq = 40;
 			      running = 1;
             errorFlags = 0;
             rxFault = false;
@@ -368,7 +368,7 @@ void MCP2517FD::txQueueSetup()
   txQCon.word = 0x400; //set FRESET to reset this FIFO
   Write(ADDR_CiTXQCON, txQCon.word);
   vTaskDelay(xDelay);
-  
+
   //transmit queue set up
   txQCon.word = 0;
   txQCon.txBF.PayLoadSize = 7; //64 bytes
@@ -377,7 +377,7 @@ void MCP2517FD::txQueueSetup()
   txQCon.txBF.TxPriority = 15; //middle priority
   txQCon.txBF.TxEmptyIE = 0;
   Write(ADDR_CiTXQCON, txQCon.word);
-  if (debuggingMode) 
+  if (debuggingMode)
   {
     debugVal = Read(ADDR_CiTXQCON);
     Serial.println(debugVal, BIN);
@@ -400,7 +400,7 @@ void MCP2517FD::commonInit()
   tsCon.bF.TBCPrescaler = 39; //40x slow down means 1us resolution
   tsCon.bF.TBCEnable = 1;
   Write(ADDR_CiTSCON ,tsCon.word);
-  if (debuggingMode) 
+  if (debuggingMode)
   {
     debugVal = Read(ADDR_CiTSCON);
     Serial.println(debugVal, BIN);
@@ -412,7 +412,7 @@ void MCP2517FD::commonInit()
   fifoCon.rxBF.FifoSize = 17; //18 frames long
   fifoCon.rxBF.PayLoadSize = 7; //64 byte payload possible
   fifoCon.rxBF.RxFullIE = 1; //if the FIFO fills up let the code know (hopefully never happens!)
-  fifoCon.rxBF.RxNotEmptyIE = 1; //if the FIFO isn't empty let the code know 
+  fifoCon.rxBF.RxNotEmptyIE = 1; //if the FIFO isn't empty let the code know
   fifoCon.rxBF.RxTimeStampEnable = 1; //time stamp each frame as it comes in
   Write(ADDR_CiFIFOCON + (CiFIFO_OFFSET * 1), fifoCon.word); //Write to FIFO1
 }
@@ -435,9 +435,9 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
 
   /*the MCP2517 has a very wide range for setting the baud rate. The sys clock is 40Mhz by default.
     But, someone can pass a different value if using a different crystal.
-    We'll target around "Freq" TQ (with a target 75% sample point) for each bit on the CAN 
+    We'll target around "Freq" TQ (with a target 75% sample point) for each bit on the CAN
     so we want a prescaler that takes 1 million / target baud to get a prescaler.
-    Obviously this makes the upper limit 1M CAN rate be a prescaler of 1. 
+    Obviously this makes the upper limit 1M CAN rate be a prescaler of 1.
     250K is a prescaler of 4, 33.333k is a prescale of 30
     We need TSEG1 + TSEG2 + 1 to equal Freq
   */
@@ -459,7 +459,7 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   }
   nominalCfg.bF.BRP = (1000000ul / CAN_Bus_Speed) - 1;
   uint32_t calcRate = (Freq * 1000000ul) / (nominalCfg.bF.BRP + 1) / (tseg1 + tseg2 + 1);
-  int errRate = abs(CAN_Bus_Speed - calcRate);
+  int errRate = abs(int(CAN_Bus_Speed - calcRate));
   if (errRate >= (CAN_Bus_Speed / 50)) //if more than 2% error in speed setting
   {
     if (debuggingMode) {
@@ -474,7 +474,7 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   canConfig.bF.WakeUpFilterEnable = 0; //Not using wakeup filter
   canConfig.bF.BitRateSwitchDisable = 1; //We won't allow FD rate switching in this standard init function
   canConfig.bF.RestrictReTxAttempts = 1; //Don't try sending frames forever if no one acks them
-  canConfig.bF.EsiInGatewayMode = 0; //ESI reflects error status 
+  canConfig.bF.EsiInGatewayMode = 0; //ESI reflects error status
   canConfig.bF.SystemErrorToListenOnly = 0; //Don't automatically switch to listen only on system error
   canConfig.bF.StoreInTEF = 0; // Don't store transmitted messages back into RAM
   canConfig.bF.TXQEnable = 1; //But, do enable the transmission queue and save space for it in RAM
@@ -489,19 +489,19 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
     debugVal = Read(ADDR_CiNBTCFG);
     Serial.println(debugVal, BIN);
   }
-  
+
   commonInit();
 
   if(!autoBaud) {
     // Return to Normal mode
-    if(!Mode(CAN_CLASSIC_MODE)) 
+    if(!Mode(CAN_CLASSIC_MODE))
     {
         if (debuggingMode) Serial.println("Could not enter normal mode");
         return false;
     }
   } else {
     // Set to Listen Only mode
-    if(!Mode(CAN_LISTEN_ONLY_MODE)) 
+    if(!Mode(CAN_LISTEN_ONLY_MODE))
     {
         if (debuggingMode) Serial.println("Could not enter listen only mode");
         return false;
@@ -511,7 +511,7 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
   Write(ADDR_CiINT, 0xB8030000); //Enable Invalid Msg, Bus err, sys err, rx overflow, rx fifo, tx fifo interrupts
   // Test that we can read back from the MCP2515 what we wrote to it
   uint32_t rtn = Read(ADDR_CiINT);
-  if ((rtn & 0xFFFF0000) == 0xB8030000) 
+  if ((rtn & 0xFFFF0000) == 0xB8030000)
   {
     inFDMode = false;
     if (debuggingMode) Serial.println("MCP2517 Init Success");
@@ -522,7 +522,7 @@ bool MCP2517FD::_init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW, bool au
 
     return true;
   }
-  else 
+  else
   {
     if (debuggingMode) Serial.println(rtn, HEX);
     return false;
@@ -554,7 +554,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
 
   /*Forget everything said about the baud rate generator in the _init function above. When we
     plan to be in FD mode it is best if the baud rate generator uses the same prescaler for both
-    the nominal and data rates. 
+    the nominal and data rates.
   */
   // Set registers
   nominalCfg.bF.SJW = sjw;
@@ -602,7 +602,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   canConfig.bF.WakeUpFilterEnable = 0; //Not using wakeup filter
   canConfig.bF.BitRateSwitchDisable = 0; //Let each TX frame tell us whether to use FD rate switching or not
   canConfig.bF.RestrictReTxAttempts = 1; //Don't try sending frames forever if no one acks them
-  canConfig.bF.EsiInGatewayMode = 0; //ESI reflects error status 
+  canConfig.bF.EsiInGatewayMode = 0; //ESI reflects error status
   canConfig.bF.SystemErrorToListenOnly = 1; //Auto switch to listen only on system err bit
   canConfig.bF.StoreInTEF = 0; // Don't store transmitted messages back into RAM
   canConfig.bF.TXQEnable = 1; //But, do enable the transmission queue and save space for it in RAM
@@ -616,14 +616,14 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
 
   if(!autoBaud) {
     // Return to Normal mode
-    if(!Mode(CAN_NORMAL_MODE)) 
+    if(!Mode(CAN_NORMAL_MODE))
     {
         if (debuggingMode) Serial.println("Could not enter normal mode");
         return false;
     }
   } else {
     // Set to Listen Only mode
-    if(!Mode(CAN_LISTEN_ONLY_MODE)) 
+    if(!Mode(CAN_LISTEN_ONLY_MODE))
     {
         if (debuggingMode) Serial.println("Could not enter listen only mode");
         return false;
@@ -633,7 +633,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
   Write(ADDR_CiINT, 0xB8030000); //Enable Invalid Msg, Bus err, sys err, rx overflow, rx fifo, tx fifo interrupts
   // Test that we can read back from the MCP2517FD what we wrote to it
   uint32_t rtn = Read(ADDR_CiINT);
-  if ((rtn & 0xFFFF0000) == 0xB8030000) 
+  if ((rtn & 0xFFFF0000) == 0xB8030000)
   {
     inFDMode = true;
     if (debuggingMode) Serial.println("MCP2517 InitFD Success");
@@ -643,15 +643,15 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     faulted = false;
     return true;
   }
-  else 
+  else
   {
-    if (debuggingMode) 
+    if (debuggingMode)
     {
       Serial.println(rtn, HEX);
     }
     return false;
   }
-  return false;  
+  return false;
 }
 
 uint16_t MCP2517FD::available()
@@ -689,7 +689,7 @@ int MCP2517FD::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, b
   //Then we can directly write the filter and mask out - Using extended to augment bit 30 appropriately
   packedID = id;
   packedMask = mask;
-  if (extended) 
+  if (extended)
   {
       packedID = packExtValue(packedID);
       packedMask = packExtValue(packedMask);
@@ -731,7 +731,7 @@ void MCP2517FD::setListenOnlyMode(bool state)
 {
     if (state)
         Mode(CAN_LISTEN_ONLY_MODE); //listen only seems to always accept FD frames
-    else 
+    else
     {
       if (!inFDMode) Mode(CAN_CLASSIC_MODE);
       else Mode(CAN_NORMAL_MODE);
@@ -752,7 +752,7 @@ void MCP2517FD::disable()
 bool MCP2517FD::sendFrame(CAN_FRAME& txFrame)
 {
     CAN_FRAME_FD temp;
-    if (canToFD(txFrame, temp)) 
+    if (canToFD(txFrame, temp))
     {
         EnqueueTX(temp);
         return true;
@@ -823,7 +823,7 @@ void MCP2517FD::printDebug()
   Serial.print(Read(ADDR_CiDBTCFG), HEX);
   Serial.print("  TDC: ");
   Serial.println(Read(ADDR_CiTDC), HEX);
-  
+
   Serial.print("TxqCon: ");
   Serial.print(Read(ADDR_CiTXQCON), HEX);
   Serial.print("  TsCon: ");
@@ -838,7 +838,7 @@ void MCP2517FD::printDebug()
   Serial.print("  F1Ctrl: ");
   Serial.print(Read(ADDR_CiFIFOCON + CiFIFO_OFFSET), HEX);
   Serial.print("  F1 Status: ");
-  Serial.println(Read(ADDR_CiFIFOSTA + CiFIFO_OFFSET), HEX);  
+  Serial.println(Read(ADDR_CiFIFOSTA + CiFIFO_OFFSET), HEX);
 }
 
 void MCP2517FD::Reset() {
@@ -864,7 +864,7 @@ uint32_t MCP2517FD::Read(uint16_t address) {
   return data;
 }
 
-uint8_t MCP2517FD::Read8(uint16_t address) 
+uint8_t MCP2517FD::Read8(uint16_t address)
 {
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
@@ -876,7 +876,7 @@ uint8_t MCP2517FD::Read8(uint16_t address)
   return data;
 }
 
-uint16_t MCP2517FD::Read16(uint16_t address) 
+uint16_t MCP2517FD::Read16(uint16_t address)
 {
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
@@ -902,14 +902,14 @@ void MCP2517FD::Read(uint16_t address, uint8_t data[], uint16_t bytes) {
 
 uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   uint32_t buffer[19]; //76 bytes
-  
+
   //there is no read buffer command anymore. Need to read from RAM on the chip
   //quickly read the whole thing then process it afterward
   SPI.beginTransaction(fdSPISettings);
   digitalWrite(_CS,LOW);
   SPI.transfer((CMD_READ << 4) | ((address >> 8) & 0xF));
   SPI.transfer(address & 0xFF);
-  //read enough of the RAM to get an 8 byte message. 
+  //read enough of the RAM to get an 8 byte message.
   //Then we check to see if we really need to read more.
   //This prevents having to read 64 data bytes if we were just receiving normal frames.
   SPI.transferBytes(NULL, (uint8_t *)&buffer[0], 20);
@@ -946,7 +946,7 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
     The first 32 bits are the message ID, either 11 or 29 bit (12 bit not handled yet), then bit 29 is RRS
     The next 32 bits have:
        first 4 bits are DLC
-       Then 
+       Then
        IDE (extended address) (bit 4)
        RTR (Remote request) (bit 5)
        BRS (Baud rate switch for data) (bit 6)
@@ -962,7 +962,7 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   message.fid = 0;
   message.priority = 0;
   message.fdMode = (buffer[1] >> 7) & 1;
-  if (message.fdMode) 
+  if (message.fdMode)
     message.rrs = buffer[0] >> 29 & 1;
   else
     message.rrs = buffer[1] >> 5 & 1;
@@ -1029,7 +1029,7 @@ void MCP2517FD::Write(uint16_t address, uint8_t data[], uint16_t bytes) {
 }
 
 void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
-  
+
   uint8_t buffer[76];
   uint32_t *buffPtr;
   int dataBytes;
@@ -1037,13 +1037,13 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
     The first 32 bits are the message ID, either 11 or 29 bit (12 bit not handled yet), then bit 29 is RRS
     The next 32 bits have:
        first 4 bits are DLC
-       Then 
+       Then
        IDE (extended address) (bit 4)
        RTR (Remote request) (bit 5)
        BRS (Baud rate switch for data) (bit 6)
        FDF (FD mode) (Bit 7)
        ESI (1 = tx node error passive, 0 = tx node error active) (bit 8)
-       SEQ (sequence number) (Bits 9-15) - Optional sequence number for your reference 
+       SEQ (sequence number) (Bits 9-15) - Optional sequence number for your reference
     Then each additional byte is a data byte (up to 64 bytes)
   */
   buffer[0] = (CMD_WRITE << 4) | ((address >> 8) & 0xF);
@@ -1054,7 +1054,7 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   else buffPtr[0] = message.id & 0x7FF;
 
   buffPtr[1] = (message.extended) ? (1 << 4) : 0;
-  buffPtr[1] |= (message.fdMode) ? (1 << 7) : 0; 
+  buffPtr[1] |= (message.fdMode) ? (1 << 7) : 0;
   if (message.fdMode)
     buffPtr[0] |= (message.rrs) ? (1 << 29) : 0;
   else
@@ -1070,7 +1070,7 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
   else if (message.length > 24 && message.length < 33) buffPtr[1] |= 13;
   else if (message.length > 32 && message.length < 49) buffPtr[1] |= 14;
   else if (message.length > 48 && message.length < 65) buffPtr[1] |= 15;
-  else 
+  else
   {
     if (message.length < 9) buffPtr[1] |= message.length;
     else buffPtr[1] |= 8;
@@ -1078,12 +1078,12 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
 
   //only copy the number of data words we really have to.
   int copyWords = (dataBytes + 3) / 4;
-  for (int j = 0; j < copyWords; j++) 
+  for (int j = 0; j < copyWords; j++)
   {
     buffPtr[2 + j] = message.data.uint32[j];
   }
-  
-  if (debuggingMode) 
+
+  if (debuggingMode)
   {
     Serial.print("Load TXBufr Addr ");
     Serial.print(address, HEX);
@@ -1116,7 +1116,7 @@ bool MCP2517FD::Mode(byte mode) {
   Write(ADDR_CiCON, tempMode);
   delay(6); // allow for any transmissions to complete
   uint8_t data = Read8(ADDR_CiCON + 2);
-  if (debuggingMode) 
+  if (debuggingMode)
   {
     Serial.println(data, BIN);
     Serial.println(mode, BIN);
@@ -1136,7 +1136,7 @@ void MCP2517FD::InitFilters(bool permissive) {
 	if (permissive) {
 		value = 0;
     value32 = 0;
-	}	
+	}
 	else {
 		value = 0x7FF; //all 11 bits set
     value32 = 0x1FFFFFFF; //all 29 bits set
@@ -1144,7 +1144,7 @@ void MCP2517FD::InitFilters(bool permissive) {
 
   _setFilterSpecific(0, value, value, false);
   _setFilterSpecific(1, value32, value32, true);
-} 
+}
 
 //Places the given frame into the receive queue
 void IRAM_ATTR MCP2517FD::EnqueueRX(CAN_FRAME_FD& newFrame) {
@@ -1176,12 +1176,12 @@ void MCP2517FD::intHandler(void) {
 
     // determine which interrupt flags have been set
     uint32_t interruptFlags = Read(ADDR_CiINT);
-    
+
     //if(interruptFlags & 1)  //Transmit FIFO interrupt
     //{
-      //Only FIFO0 is TX so no need to ask for which FIFO. 
+      //Only FIFO0 is TX so no need to ask for which FIFO.
       //Write8(ADDR_CiFIFOCON, 0x80); //Keep FIFO as TX but disable Queue Empty Interrupt
-      //handleTXFifoISR(0);      
+      //handleTXFifoISR(0);
     //}
     //else //didn't get TX interrupt but check if we've got msgs in FIFO and see if we can queue them into hardware
     {
@@ -1222,7 +1222,7 @@ void MCP2517FD::intHandler(void) {
       errorFlags |= 8;
     }
     if (errorFlags > 0)
-    { 
+    {
       //if (debuggingMode) Serial.write('?');
       uint32_t diagBits = getCIBDIAG1(); //get a detailed fault status
 
@@ -1242,11 +1242,11 @@ void MCP2517FD::intHandler(void) {
         rxFault = true;
         faulted = true;
         needMCPReset = true; //could reset when these errors happen. Maybe count errors to decide?
-      }  
+      }
       if (diagBits & 0x800000) //23 - TXBOERR - device went bus-off (and auto recovered)
       {
         //it's OK if it goes bus off and tries to recover. Don't reset as we might mess up the bus if we're insane
-      }  
+      }
       if (diagBits & 0x40000000) //30 - ESI of RX FD message was set
       {
         rxFault = true;
@@ -1259,7 +1259,7 @@ void MCP2517FD::intHandler(void) {
       }
     }
 
-    
+
 
     //Now, acknowledge the interrupts by clearing the intf bits
     Write16(ADDR_CiINT, 0);
@@ -1286,7 +1286,7 @@ void MCP2517FD::handleTXFifoISR(int fifo)
   //While the FIFO has room and we still have frames to send
   while ( (status & 1) && (uxQueueMessagesWaiting(txQueue) > 0) ) //while fifo is not full and we have messages waiting
   {
-    if (debuggingMode) 
+    if (debuggingMode)
     {
       Serial.write('~');
     }
@@ -1333,7 +1333,7 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
   //{
     //try to queue, do not wait if we can't. If we can then pretend an interrupt happened.
     if (!txQueue) return;
-    if (xQueueSend(txQueue, &newFrame, 0) == pdPASS) 
+    if (xQueueSend(txQueue, &newFrame, 0) == pdPASS)
     {
         if (debuggingMode) Serial.write('+');
     //  xHigherPriorityTaskWoken = xTaskNotifyGive(intTaskFD); //send notice to the handler task that it can do the SPI transaction now
@@ -1352,7 +1352,7 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME_FD &newFrame)
 }
 
 /*The idea here is to use the fid member (which is not normally used) as a signal to
-  downstream of the type of callback that needs to be done. 
+  downstream of the type of callback that needs to be done.
   The lowest 8 bits are used to pass the filter that matched (or FF if general callback)
   If bit 31 is set then it's an object callback and the upper byte (minus that top one) are the listener position
 */
@@ -1361,13 +1361,13 @@ void MCP2517FD::handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit)
   CANListener *thisListener;
 
   //First, try to send a callback. If no callback registered then buffer the frame.
-  if (cbCANFrame[filterHit]) 
+  if (cbCANFrame[filterHit])
 	{
     frame.fid = filterHit;
     xQueueSend(callbackQueueMCP, &frame, 0);
     return;
 	}
-	else if (cbGeneral) 
+	else if (cbGeneral)
 	{
 		frame.fid = 0xFF;
     xQueueSend(callbackQueueMCP, &frame, 0);
@@ -1380,13 +1380,13 @@ void MCP2517FD::handleFrameDispatch(CAN_FRAME_FD &frame, int filterHit)
 			thisListener = listener[listenerPos];
 			if (thisListener != NULL)
 			{
-				if (thisListener->isCallbackActive(filterHit)) 
+				if (thisListener->isCallbackActive(filterHit))
 				{
 					frame.fid = 0x80000000ul + (listenerPos << 24ul) + filterHit;
                     xQueueSend(callbackQueueMCP, &frame, 0);
                     return;
 				}
-				else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
+				else if (thisListener->isCallbackActive(numFilters)) //global catch-all
 				{
                     frame.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
 					xQueueSend(callbackQueueMCP, &frame, 0);
