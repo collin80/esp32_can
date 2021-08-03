@@ -111,6 +111,7 @@ class MCP2517FD : public CAN_COMMON
 	QueueHandle_t	rxQueue;
 	QueueHandle_t	txQueue;
 	uint32_t errorFlags;
+    uint32_t cachedDiag1;
 };
 
 extern MCP2517FD CAN1;
