@@ -119,7 +119,7 @@ typedef struct {
 	        unsigned int TI:1;            			/**< \brief IR.1 Transmit Interrupt */
 	        unsigned int EI:1;                     	/**< \brief IR.2 Error Interrupt */
 	        unsigned int DOI:1;                   	/**< \brief IR.3 Data Overrun Interrupt */
-	        unsigned int WUI:1;            			/**< \brief IR.4 Wake-Up Interrupt */
+	        unsigned int RES_2:1;            		/**< \brief  Reserved */
 	        unsigned int EPI:1;            			/**< \brief IR.5 Error Passive Interrupt */
 	        unsigned int ALI:1;            			/**< \brief IR.6 Arbitration Lost Interrupt */
 	        unsigned int BEI:1;            			/**< \brief IR.7 Bus Error Interrupt */
@@ -132,7 +132,7 @@ typedef struct {
 	        unsigned int TIE:1;            			/**< \brief IER.1 Transmit Interrupt Enable */
 	        unsigned int EIE:1;                     /**< \brief IER.2 Error Interrupt Enable */
 	        unsigned int DOIE:1;                   	/**< \brief IER.3 Data Overrun Interrupt Enable */
-	        unsigned int WUIE:1;            		/**< \brief IER.4 Wake-Up Interrupt Enable */
+	        unsigned int BRP_DIV:1;            		/**< \brief 1 = Divide baud rate by 2 but only on rev2 and higher ESP32 */
 	        unsigned int EPIE:1;            		/**< \brief IER.5 Error Passive Interrupt Enable */
 	        unsigned int ALIE:1;            		/**< \brief IER.6 Arbitration Lost Interrupt Enable */
 	        unsigned int BEIE:1;            		/**< \brief IER.7 Bus Error Interrupt Enable */

@@ -231,52 +231,52 @@ int CAN_init()
 	gpio_pad_select_gpio(CAN_cfg.rx_pin_id);
 
     //set to PELICAN mode
-	MODULE_CAN->CDR.B.CAN_M     =0x1;
+	MODULE_CAN->CDR.B.CAN_M = 0x1;
 
     MODULE_CAN->IER.U = 0; //disable all interrupt sources until we're ready
     //clear interrupt flags
     (void)MODULE_CAN->IR.U;
     
 	//synchronization jump width is the same for all baud rates
-	MODULE_CAN->BTR0.B.SJW		=0x1;
+	MODULE_CAN->BTR0.B.SJW = 0x1;
 
 	//TSEG2 is the same for all baud rates
-	MODULE_CAN->BTR1.B.TSEG2	=0x1;
+	MODULE_CAN->BTR1.B.TSEG2 = 0x1;
 
 	//select time quantum and set TSEG1
 	switch(CAN_cfg.speed)
     {
 		case CAN_SPEED_1000KBPS:
-			MODULE_CAN->BTR1.B.TSEG1	=0x4;
+			MODULE_CAN->BTR1.B.TSEG1 = 0x4;
 			__tq = 0.125;
 			break;
 
 		case CAN_SPEED_800KBPS:
-			MODULE_CAN->BTR1.B.TSEG1	=0x6;
+			MODULE_CAN->BTR1.B.TSEG1 = 0x6;
 			__tq = 0.125;
 			break;
         case CAN_SPEED_33KBPS:
             //changes everything...
-            MODULE_CAN->BTR1.B.TSEG2	=0x6;
-            MODULE_CAN->BTR1.B.TSEG1	=0xf; //16 + 1 + 7 = 24
-            __tq = ((float)1000.0f/33.3f) / 24.0f;
+            MODULE_CAN->BTR1.B.TSEG2 = 0x6;
+            MODULE_CAN->BTR1.B.TSEG1 = 0xf; //16 + 1 + 7 = 24
+            __tq = ((float)1000.0f / 33.3f) / 24.0f;
             break;
 		default:
-			MODULE_CAN->BTR1.B.TSEG1	=0xc;
-			__tq = ((float)1000/CAN_cfg.speed) / 16;
+			MODULE_CAN->BTR1.B.TSEG1 = 0xc;
+			__tq = ((float)1000.0f / (float)CAN_cfg.speed) / 16.0f;
 	}
 
 	//set baud rate prescaler
     //APB_CLK_FREQ should be 80M
-	MODULE_CAN->BTR0.B.BRP=(uint8_t)round((((APB_CLK_FREQ * __tq) / 2) - 1)/1000000)-1;
+	MODULE_CAN->BTR0.B.BRP = (uint8_t)round((((APB_CLK_FREQ * __tq) / 2) - 1)/1000000)-1;
 
     /* Set sampling
      * 1 -> triple; the bus is sampled three times; recommended for low/medium speed buses     (class A and B) where filtering spikes on the bus line is beneficial
      * 0 -> single; the bus is sampled once; recommended for high speed buses (SAE class C)*/
-    MODULE_CAN->BTR1.B.SAM	=0x1;
+    MODULE_CAN->BTR1.B.SAM = 0x1;
 
-    //enable all interrupts
-    MODULE_CAN->IER.U = 0xff;
+    //enable all interrupts (BUT NOT BIT 4 which has turned into a baud rate scalar!)
+    MODULE_CAN->IER.U = 0xEF; //1110 1111
 
     //no acceptance filtering, as we want to fetch all messages
     MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0;
@@ -289,7 +289,7 @@ int CAN_init()
     MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
 
     //set to normal mode
-    MODULE_CAN->OCR.B.OCMODE=__CAN_OC_NOM;
+    MODULE_CAN->OCR.B.OCMODE = __CAN_OC_NOM;
 
     //clear error counters
     MODULE_CAN->TXERR.U = 0;
