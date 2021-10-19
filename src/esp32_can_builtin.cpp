@@ -27,6 +27,8 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     CAN_cfg.rx_pin_id = rxPin;
     CAN_cfg.tx_pin_id = txPin;
     cyclesSinceTraffic = 0;
+    rxBufferSize = BI_RX_BUFFER_SIZE; //set defaults
+    txBufferSize = BI_TX_BUFFER_SIZE;
 }
 
 void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
@@ -134,6 +136,16 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
     cyclesSinceTraffic = 0;
 }
 
+void ESP32CAN::setRXBufferSize(int newSize)
+{
+    rxBufferSize = newSize;
+}
+
+void ESP32CAN::setTXBufferSize(int newSize)
+{
+    txBufferSize = newSize;
+}
+
 int ESP32CAN::_setFilterSpecific(uint8_t mailbox, uint32_t id, uint32_t mask, bool extended)
 {
     if (mailbox < BI_NUM_FILTERS)
@@ -174,8 +186,8 @@ void ESP32CAN::_init()
 
     if (!initializedResources) {
                                  //Queue size, item size
-        CAN_cfg.rx_queue = xQueueCreate(BI_RX_BUFFER_SIZE,sizeof(CAN_frame_t));
-        CAN_cfg.tx_queue = xQueueCreate(BI_TX_BUFFER_SIZE,sizeof(CAN_frame_t));
+        CAN_cfg.rx_queue = xQueueCreate(rxBufferSize,sizeof(CAN_frame_t));
+        CAN_cfg.tx_queue = xQueueCreate(txBufferSize,sizeof(CAN_frame_t));
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
         CAN_initRXQueue();
                   //func        desc    stack, params, priority, handle to task

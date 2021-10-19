@@ -44,6 +44,7 @@
 
 //#define DEBUG_SETUP
 #define BI_NUM_FILTERS 32
+
 #define BI_RX_BUFFER_SIZE	64
 #define BI_TX_BUFFER_SIZE  16
 
@@ -73,6 +74,8 @@ public:
   void disable();
   bool sendFrame(CAN_FRAME& txFrame);
   bool rx_avail();
+  void setTXBufferSize(int newSize);
+  void setRXBufferSize(int newSize);
   uint16_t available(); //like rx_avail but returns the number of waiting frames
   uint32_t get_rx_buff(CAN_FRAME &msg);
   bool processFrame(CAN_frame_t &frame);
@@ -89,6 +92,8 @@ protected:
 private:
   // Pin variables
   ESP32_FILTER filters[BI_NUM_FILTERS];
+  int txBufferSize;
+  int rxBufferSize;
 };
 
 extern QueueHandle_t callbackQueue;

@@ -279,14 +279,14 @@ int CAN_init()
     MODULE_CAN->IER.U = 0xEF; //1110 1111
 
     //no acceptance filtering, as we want to fetch all messages
-    MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0;
-    MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0;
-    MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0;
-    MODULE_CAN->MBX_CTRL.ACC.CODE[3] = 0;
-    MODULE_CAN->MBX_CTRL.ACC.MASK[0] = 0xff;
-    MODULE_CAN->MBX_CTRL.ACC.MASK[1] = 0xff;
-    MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xff;
-    MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xff;
+    MODULE_CAN->MBX_CTRL.ACC.CODE[0] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.CODE[1] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.CODE[2] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.CODE[3] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.MASK[0] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.MASK[1] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.MASK[2] = 0xfff;
+    MODULE_CAN->MBX_CTRL.ACC.MASK[3] = 0xfff;
 
     //set to normal mode
     MODULE_CAN->OCR.B.OCMODE = __CAN_OC_NOM;
