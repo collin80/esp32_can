@@ -665,6 +665,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     nominalCfg.bF.TSEG2 = tseg2 - 1;
     nominalCfg.bF.BRP = 0; //baud rate prescaler. 0 = 1x prescale
 
+    if (debuggingMode) Serial.printf("Nomimal Settings:  TSEG1: %u   TSEG2: %u\n", tseg1, tseg2);
+
     /*As above, we lock the prescaler at 1x and figure out the Seg1/Seg2 based on that.
     */
     dataCfg.bF.SJW = sjw;
@@ -685,6 +687,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     dataCfg.bF.TSEG1 = tseg1 - 1;
     dataCfg.bF.TSEG2 = tseg2 - 1;
     dataCfg.bF.BRP = 0;
+
+    if (debuggingMode) Serial.printf("Data Settings:  TSEG1: %u   TSEG2: %u\n", tseg1, tseg2);
 
     canConfig.bF.IsoCrcEnable = 1; //It's likely we need ISO CRC mode active to get FD to work properly
     canConfig.bF.DNetFilterCount = 0; //Don't use device net filtering
@@ -1143,7 +1147,7 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message)
     else buffPtr[0] = message.id & 0x7FF;
 
     buffPtr[1] = (message.extended) ? (1 << 4) : 0;
-    buffPtr[1] |= (message.fdMode) ? (1 << 7) : 0;
+    buffPtr[1] |= (message.fdMode) ? (3 << 6) : 0; //set both the BRS and FDF bits at once
     if (message.fdMode)
         buffPtr[0] |= (message.rrs) ? (1 << 29) : 0;
     else
@@ -1411,10 +1415,12 @@ void MCP2517FD::handleTXFifoISR(int fifo)
         addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
         if (inFDMode) 
         {
+            if (debuggingMode) Serial.write('F');
             if (xQueueReceive(txQueue, &frameFD, 0) != pdTRUE) return; //abort if we can't load a frame from the queue!
         }
         else
         {
+            if (debuggingMode) Serial.write('S');
             if (xQueueReceive(txQueue, &frame, 0) != pdTRUE) return;
             //hardware loading below always uses the same buffer save whether CAN or CANFD
             if (!canToFD(frame, frameFD)) return;
