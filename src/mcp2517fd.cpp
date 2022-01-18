@@ -622,6 +622,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     REG_CiNBTCFG nominalCfg;
     REG_CiDBTCFG dataCfg;
     REG_CiCON canConfig;
+    REG_CiTDC txDelayConfig;
     int tseg1, tseg2;
 
     uint32_t neededTQ;
@@ -688,6 +689,10 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     dataCfg.bF.TSEG2 = tseg2 - 1;
     dataCfg.bF.BRP = 0;
 
+    txDelayConfig.bF.TDCMode = 2; //automatic mode. The module will figure out the proper delay itself
+    txDelayConfig.bF.TDCValue = 0; //this value set by hardware in auto mode
+    txDelayConfig.bF.TDCOffset = (dataCfg.bF.BRP + 1) * (tseg1); //set value (dbrp * dtseg1) as a basepoint
+
     if (debuggingMode) Serial.printf("Data Settings:  TSEG1: %u   TSEG2: %u\n", tseg1, tseg2);
 
     canConfig.bF.IsoCrcEnable = 1; //It's likely we need ISO CRC mode active to get FD to work properly
@@ -705,6 +710,7 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     Write(ADDR_CiCON, canConfig.word);
     Write(ADDR_CiNBTCFG, nominalCfg.word); //write the nominal bit time register
     Write(ADDR_CiDBTCFG, dataCfg.word); //and write out the data rate register too
+    Write(ADDR_CiTDC, txDelayConfig.word); //write out transmission delay compensation register.
 
     commonInit();
 
@@ -1360,7 +1366,7 @@ void MCP2517FD::intHandler(void) {
         {
             rxFault = true;
             faulted = true;
-            Serial.print("~~");
+            Serial.print("!!");
             cachedDiag1 |= diagBits;
             needMCPReset = true; //could reset when these errors happen. Maybe count errors to decide?
             Write(ADDR_CiBDIAG1, 0);
@@ -1415,12 +1421,12 @@ void MCP2517FD::handleTXFifoISR(int fifo)
         addr = Read( ADDR_CiFIFOUA + (CiFIFO_OFFSET * fifo) );
         if (inFDMode) 
         {
-            if (debuggingMode) Serial.write('F');
+            //if (debuggingMode) Serial.write('F');
             if (xQueueReceive(txQueue, &frameFD, 0) != pdTRUE) return; //abort if we can't load a frame from the queue!
         }
         else
         {
-            if (debuggingMode) Serial.write('S');
+            //if (debuggingMode) Serial.write('S');
             if (xQueueReceive(txQueue, &frame, 0) != pdTRUE) return;
             //hardware loading below always uses the same buffer save whether CAN or CANFD
             if (!canToFD(frame, frameFD)) return;
@@ -1486,12 +1492,24 @@ void MCP2517FD::handleTXFifo(int fifo, CAN_FRAME &newFrame)
 {
     uint32_t status;
     uint16_t addr;
+    CAN_FRAME_FD fd;
+    BaseType_t ret;
 
     if (fifo < 0) return;
     if (fifo > 2) return;
 
     if (!txQueue) return;
-    if (xQueueSend(txQueue, &newFrame, 0) == pdPASS)
+
+    if (inFDMode) //if we're in FD mode the queue takes CAN-FD frames
+    {
+        canToFD(newFrame, fd);
+        ret = xQueueSend(txQueue, &fd, 0);
+    }
+    else
+    {
+        ret = xQueueSend(txQueue, &newFrame, 0);
+    }
+    if (ret == pdPASS)
     {
         if (debuggingMode) Serial.write('+');
     }
