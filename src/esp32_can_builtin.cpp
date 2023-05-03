@@ -32,9 +32,14 @@ const VALID_TIMING valid_timings[] =
     {TWAI_TIMING_CONFIG_100KBITS(), 100000},
     {TWAI_TIMING_CONFIG_50KBITS(), 50000},
     {TWAI_TIMING_CONFIG_25KBITS(), 25000},
-    //caution, these next two are custom and haven't really been fully tested yet.
-    {{.brp = 40, .tseg_1 = 18, .tseg_2 = 6, .sjw = 3, .triple_sampling = false}, 80000}, 
-    {{.brp = 80, .tseg_1 = 22, .tseg_2 = 7, .sjw = 3, .triple_sampling = false}, 33333},
+    //caution, these next entries are custom and haven't really been fully tested yet.
+    //Note that brp can take values in multiples of 2 up to 128 and multiples of 4 up to 256
+    //TSEG1 can be 1 to 16 and TSEG2 can be 1 to 8. There is a silent +1 added to the sum of these two.
+    //The default clock is 80MHz so plan accordingly
+    {{.brp = 100, .tseg_1 = 7, .tseg_2 = 2, .sjw = 3, .triple_sampling = false}, 80000}, 
+    {{.brp = 120, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 33333},
+    //this one is only possible on ECO2 ESP32 or ESP32-S3 not on the older ESP32 chips
+    {{.brp = 200, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 20000},
     {TWAI_TIMING_CONFIG_25KBITS(), 0} //this is a terminator record. When the code sees an entry with 0 speed it stops searching
 };
 
