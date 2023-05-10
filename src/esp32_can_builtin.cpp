@@ -48,8 +48,28 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
     cyclesSinceTraffic = 0;
+    initializedResources = false;
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
+    twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
+}
+
+ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS) 
+{
+    twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
+    twai_general_cfg.rx_queue_len = 6;
+
+    rxBufferSize = BI_RX_BUFFER_SIZE;
+
+    for (int i = 0; i < BI_NUM_FILTERS; i++)
+    {
+        filters[i].id = 0;
+        filters[i].mask = 0;
+        filters[i].extended = false;
+        filters[i].configured = false;
+    }
+    initializedResources = false;
+    cyclesSinceTraffic = 0;
 }
 
 void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
@@ -57,7 +77,6 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
 }
-
 
 void CAN_WatchDog_Builtin( void *pvParameters )
 {
@@ -83,7 +102,6 @@ void CAN_WatchDog_Builtin( void *pvParameters )
         }
     }
 }
-
 
 //infinitely loops accepting frames from the TWAI driver. Calls
 //our processing routine which then applies the custom 32 filters and
@@ -147,22 +165,6 @@ void ESP32CAN::sendCallback(CAN_FRAME *frame)
         if (mb > -1) (*cbCANFrame[mb])(frame);
         else (*cbGeneral)(frame);
     }
-}
-
-ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS) 
-{
-    twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
-    rxBufferSize = BI_RX_BUFFER_SIZE;
-
-    for (int i = 0; i < BI_NUM_FILTERS; i++)
-    {
-        filters[i].id = 0;
-        filters[i].mask = 0;
-        filters[i].extended = false;
-        filters[i].configured = false;
-    }
-    initializedResources = false;
-    cyclesSinceTraffic = 0;
 }
 
 void ESP32CAN::setRXBufferSize(int newSize)
@@ -325,6 +327,7 @@ void ESP32CAN::enable()
 void ESP32CAN::disable()
 {
     twai_stop();
+    vTaskDelay(pdMS_TO_TICKS(100)); //a bit of delay here seems to fix a race condition triggered by task_LowLevelRX
     twai_driver_uninstall();
 }
 
