@@ -236,6 +236,20 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 {
     _init();
     set_baudrate(ul_baudrate);
+    if (debuggingMode)
+    {
+        //Reconfigure alerts to detect Error Passive and Bus-Off error states
+        uint32_t alerts_to_enable = TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_OFF | TWAI_ALERT_AND_LOG | TWAI_ALERT_ERR_ACTIVE 
+                                  | TWAI_ALERT_ARB_LOST | TWAI_ALERT_BUS_ERROR | TWAI_ALERT_TX_FAILED | TWAI_ALERT_RX_QUEUE_FULL;
+        if (twai_reconfigure_alerts(alerts_to_enable, NULL) == ESP_OK)
+        {
+            printf("Alerts reconfigured\n");
+        }
+        else
+        {
+        printf("Failed to reconfigure alerts");
+        }
+    }
     return ul_baudrate;
 }
 
@@ -407,8 +421,22 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
 
     //don't wait long if the queue was full. The end user code shouldn't be sending faster
     //than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
-    twai_transmit(&__TX_frame, pdMS_TO_TICKS(4));
-
+    switch (twai_transmit(&__TX_frame, pdMS_TO_TICKS(4)))
+    {
+    case ESP_OK:
+        if (debuggingMode) Serial.write('<');
+        break;
+    case ESP_ERR_TIMEOUT:
+        if (debuggingMode) Serial.write('T');
+        break;
+    case ESP_ERR_INVALID_ARG:
+    case ESP_FAIL:
+    case ESP_ERR_INVALID_STATE:
+    case ESP_ERR_NOT_SUPPORTED:
+        if (debuggingMode) Serial.write('!');
+        break;
+    }
+    
     return true;
 }
 
