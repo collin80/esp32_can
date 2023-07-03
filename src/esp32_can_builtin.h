@@ -92,7 +92,6 @@ public:
   friend void CAN_WatchDog_Builtin( void *pvParameters );
 
 protected:
-  bool initializedResources;
   int cyclesSinceTraffic;
 
 private:
