@@ -19,6 +19,10 @@ twai_filter_config_t twai_filters_cfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 QueueHandle_t callbackQueue;
 QueueHandle_t rx_queue;
 
+TaskHandle_t CAN_WatchDog_Builtin_handler = NULL;
+TaskHandle_t task_CAN_handler = NULL;
+TaskHandle_t task_LowLevelRX_handler = NULL;
+
 //because of the way the TWAI library works, it's just easier to store the valid timings here and anything not found here
 //is just plain not supported. If you need a different speed then add it here. Be sure to leave the zero record at the end
 //as it serves as a terminator
@@ -48,7 +52,6 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
     cyclesSinceTraffic = 0;
-    initializedResources = false;
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
@@ -68,7 +71,6 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
         filters[i].extended = false;
         filters[i].configured = false;
     }
-    initializedResources = false;
     cyclesSinceTraffic = 0;
 }
 
@@ -215,20 +217,8 @@ void ESP32CAN::_init()
         filters[i].configured = false;
     }
 
-    if (!initializedResources)
-    {
-        //printf("Initializing resources for built-in CAN\n");
-
-                                 //Queue size, item size
-        callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
-        rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
-
-                  //func        desc    stack, params, priority, handle to task
-        xTaskCreate(&task_CAN, "CAN_RX", 8192, this, 15, NULL);
-        //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
-        xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
-        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL, 1);
-        initializedResources = true;
+    if (!CAN_WatchDog_Builtin_handler) {
+        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
     }
 }
 
@@ -326,6 +316,14 @@ void ESP32CAN::enable()
         printf("Failed to install TWAI driver\n");
         return;
     }
+
+    callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+    rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
+
+    xTaskCreate(&task_CAN, "CAN_RX", 8192, this, 15, &task_CAN_handler);
+    //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, &task_LowLevelRX_handler, 1);
+
     // Start TWAI driver
     if (twai_start() == ESP_OK)
     {
@@ -340,9 +338,30 @@ void ESP32CAN::enable()
 
 void ESP32CAN::disable()
 {
-    twai_stop();
-    vTaskDelay(pdMS_TO_TICKS(100)); //a bit of delay here seems to fix a race condition triggered by task_LowLevelRX
-    twai_driver_uninstall();
+    twai_status_info_t info;
+    if (twai_get_status_info(&info) == ESP_OK) {
+        if (info.state == TWAI_STATE_RUNNING) {
+            twai_stop();
+        }
+
+        for (auto task : {task_CAN_handler, task_LowLevelRX_handler}) {
+            if (task != NULL)
+            {
+                vTaskDelete(task);
+                task = NULL;
+            }
+        }
+
+        for (auto queue : {rx_queue, callbackQueue}) {
+            if (queue) {
+                vQueueDelete(queue);
+            }
+        }
+
+        twai_driver_uninstall();
+    } else {
+        return;
+    }
 }
 
 //This function is too big to be running in interrupt context. Refactored so it doesn't.
