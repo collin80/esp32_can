@@ -49,6 +49,7 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     twai_general_cfg.tx_io = txPin;
     cyclesSinceTraffic = 0;
     initializedResources = false;
+    readyForTraffic = false;
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
@@ -69,6 +70,7 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
         filters[i].configured = false;
     }
     initializedResources = false;
+    readyForTraffic = false;
     cyclesSinceTraffic = 0;
 }
 
@@ -109,14 +111,20 @@ void CAN_WatchDog_Builtin( void *pvParameters )
 void task_LowLevelRX(void *pvParameters)
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    
     while (1)
     {
         twai_message_t message;
-        if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
+        if (espCan->readyForTraffic)
         {
-            espCan->processFrame(message);
+            if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
+            {
+                espCan->processFrame(message);
+            }
         }
+        else vTaskDelay(pdMS_TO_TICKS(100));
     }
+    
 }
 
 /*
@@ -217,19 +225,22 @@ void ESP32CAN::_init()
 
     if (!initializedResources)
     {
-        //printf("Initializing resources for built-in CAN\n");
+        if (debuggingMode) printf("Initializing resources for built-in CAN\n");
 
                                  //Queue size, item size
         callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
         rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
+        if (debuggingMode) Serial.println("Created queues.");
 
                   //func        desc    stack, params, priority, handle to task
         xTaskCreate(&task_CAN, "CAN_RX", 8192, this, 15, NULL);
-        //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
-        xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+        if (debuggingMode) Serial.println("task rx created.");
+        if (debuggingMode) Serial.println("task low level rx created.");
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL, 1);
+        if (debuggingMode) Serial.println("task watchdog created.");
         initializedResources = true;
     }
+    if (debuggingMode) Serial.println("_init done");
 }
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
@@ -247,9 +258,12 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         }
         else
         {
-        printf("Failed to reconfigure alerts");
+            printf("Failed to reconfigure alerts");
         }
     }
+    //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+    readyForTraffic = true;
     return ul_baudrate;
 }
 
@@ -259,6 +273,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
 
     _init();
 
+    readyForTraffic = false;
     twai_stop();
     twai_general_cfg.mode = TWAI_MODE_LISTEN_ONLY;
     int idx = 0;
@@ -336,10 +351,12 @@ void ESP32CAN::enable()
         printf("Failed to start TWAI driver\n");
         return;
     }
+    readyForTraffic = true;
 }
 
 void ESP32CAN::disable()
 {
+    readyForTraffic = false;
     twai_stop();
     vTaskDelay(pdMS_TO_TICKS(100)); //a bit of delay here seems to fix a race condition triggered by task_LowLevelRX
     twai_driver_uninstall();

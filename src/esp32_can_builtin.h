@@ -90,9 +90,11 @@ public:
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
 
   friend void CAN_WatchDog_Builtin( void *pvParameters );
+  friend void task_LowLevelRX(void *pvParameters);
 
 protected:
   bool initializedResources;
+  bool readyForTraffic;
   int cyclesSinceTraffic;
 
 private:
