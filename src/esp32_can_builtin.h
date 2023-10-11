@@ -76,6 +76,7 @@ public:
   uint32_t beginAutoSpeed();
   uint32_t set_baudrate(uint32_t ul_baudrate);
   void setListenOnlyMode(bool state);
+  void setNoACKMode(bool state);
   void enable();
   void disable();
   bool sendFrame(CAN_FRAME& txFrame);
@@ -88,7 +89,6 @@ public:
   void sendCallback(CAN_FRAME *frame);
 
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
-  void setOperationMode(twai_mode_t mode);
 
   friend void CAN_WatchDog_Builtin( void *pvParameters );
   friend void task_LowLevelRX(void *pvParameters);

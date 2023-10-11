@@ -80,10 +80,6 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     twai_general_cfg.tx_io = txPin;
 }
 
-void ESP32CAN::setOperationMode(twai_mode_t mode) {
-    twai_general_cfg.mode = mode;
-}
-
 void CAN_WatchDog_Builtin( void *pvParameters )
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
@@ -331,6 +327,13 @@ void ESP32CAN::setListenOnlyMode(bool state)
 {
     disable();
     twai_general_cfg.mode = state?TWAI_MODE_LISTEN_ONLY:TWAI_MODE_NORMAL;
+    enable();
+}
+
+void ESP32CAN::setNoACKMode(bool state)
+{
+    disable();
+    twai_general_cfg.mode = state?TWAI_MODE_NO_ACK:TWAI_MODE_NORMAL;
     enable();
 }
 
