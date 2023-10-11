@@ -80,6 +80,10 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     twai_general_cfg.tx_io = txPin;
 }
 
+void ESP32CAN::setOperationMode(twai_mode_t mode) {
+    twai_general_cfg.mode = mode;
+}
+
 void CAN_WatchDog_Builtin( void *pvParameters )
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;

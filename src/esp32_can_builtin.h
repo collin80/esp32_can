@@ -88,6 +88,7 @@ public:
   void sendCallback(CAN_FRAME *frame);
 
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
+  void setOperationMode(twai_mode_t mode);
 
   friend void CAN_WatchDog_Builtin( void *pvParameters );
   friend void task_LowLevelRX(void *pvParameters);
