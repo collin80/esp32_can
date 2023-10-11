@@ -330,6 +330,13 @@ void ESP32CAN::setListenOnlyMode(bool state)
     enable();
 }
 
+void ESP32CAN::setNoACKMode(bool state)
+{
+    disable();
+    twai_general_cfg.mode = state?TWAI_MODE_NO_ACK:TWAI_MODE_NORMAL;
+    enable();
+}
+
 void ESP32CAN::enable()
 {
     if (twai_driver_install(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg) == ESP_OK)
