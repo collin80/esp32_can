@@ -24,9 +24,3 @@ MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
 MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
 //MCP2515 __attribute__((weak)) CAN1(5, 27) ;
 #endif
-
-#if SOC_TWAI_CONTROLLER_NUM == 2
-ESP32CAN __attribute__((weak)) CAN1(GPIO_NUM_18, GPIO_NUM_19);
-#else
-MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
-#endif
