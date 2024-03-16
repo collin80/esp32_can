@@ -8,11 +8,25 @@
              //rxpin       txpin
 ESP32CAN __attribute__((weak)) CAN0(GPIO_NUM_16, GPIO_NUM_17) ;
 
-//Select and uncomment the proper module you've got connected via SPI
-            //CS, INT
 #if SOC_TWAI_CONTROLLER_NUM == 2
-ESP32CAN __attribute__((weak)) CAN1(GPIO_NUM_18, GPIO_NUM_19) ;
+ESP32CAN __attribute__((weak)) CAN1(GPIO_NUM_18, GPIO_NUM_19);
+
+#if defined(HAS_EXTERNAL_CAN_CONTROLLER)
+//Select and uncomment the proper module you've got connected via SPI
+//CS, INT
+MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
+//MCP2515 __attribute__((weak)) CAN1(5, 27) ;
+#endif
+
+#elif defined (HAS_EXTERNAL_CAN_CONTROLLER)
+//Select and uncomment the proper module you've got connected via SPI
+//CS, INT
+MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
+//MCP2515 __attribute__((weak)) CAN1(5, 27) ;
+#endif
+
+#if SOC_TWAI_CONTROLLER_NUM == 2
+ESP32CAN __attribute__((weak)) CAN1(GPIO_NUM_18, GPIO_NUM_19);
 #else
 MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
 #endif
-//MCP2515 __attribute__((weak)) CAN1(5, 27) ;
