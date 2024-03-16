@@ -42,7 +42,7 @@ const VALID_TIMING valid_timings[] =
     {TWAI_TIMING_CONFIG_25KBITS(), 0} //this is a terminator record. When the code sees an entry with 0 speed it stops searching
 };
 
-ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
+ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_COMMON(32)
 {
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
@@ -52,6 +52,10 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
+    
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    bus_handle.controller_id = busNumber;
+#endif
 }
 
 ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS) 
@@ -91,7 +95,7 @@ void CAN_WatchDog_Builtin( void *pvParameters )
         espCan->cyclesSinceTraffic++;
 
         esp_err_t result;
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
         result = twai_get_status_info_v2(espCan->bus_handle, &status_info);
 #else
         result = twai_get_status_info(&status_info);
@@ -102,7 +106,7 @@ void CAN_WatchDog_Builtin( void *pvParameters )
             {
                 espCan->cyclesSinceTraffic = 0;
 
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
                 result = twai_initiate_recovery_v2(espCan->bus_handle);
 #else
                 result = twai_initiate_recovery();
@@ -129,7 +133,7 @@ void task_LowLevelRX(void *pvParameters)
         if (espCan->readyForTraffic)
         {
             esp_err_t result;
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
             result = twai_receive_v2(espCan->bus_handle, &message, pdMS_TO_TICKS(100));
 #else
             result = twai_receive(&message, pdMS_TO_TICKS(100));
@@ -276,7 +280,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
                                   | TWAI_ALERT_ARB_LOST | TWAI_ALERT_BUS_ERROR | TWAI_ALERT_TX_FAILED | TWAI_ALERT_RX_QUEUE_FULL;
 
         esp_err_t result;
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
         result = twai_reconfigure_alerts_v2(bus_handle, alerts_to_enable, NULL);
 #else
         result = twai_reconfigure_alerts(alerts_to_enable, NULL);
@@ -365,7 +369,7 @@ void ESP32CAN::setListenOnlyMode(bool state)
 
 void ESP32CAN::enable()
 {
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     if (twai_driver_install_v2(&g_config, &t_config, &f_config, &bus_handle) == ESP_OK) {
         printf("Driver installed\n");
     } else {
@@ -489,7 +493,7 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     //don't wait long if the queue was full. The end user code shouldn't be sending faster
     //than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
     esp_err_t result;
-#if SOC_TWAI_CONTROLLER_NUM == 2
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     result = twai_transmit_v2(bus_handle, &__TX_frame, pdMS_TO_TICKS(4));
 #else
     result = twai_transmit(&__TX_frame, pdMS_TO_TICKS(4));

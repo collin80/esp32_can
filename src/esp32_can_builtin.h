@@ -65,12 +65,7 @@ typedef struct
 class ESP32CAN : public CAN_COMMON
 {
 public:
-  ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber = 0) {
-  #if SOC_TWAI_CONTROLLER_NUM == 2
-    busHandle.controller_id = busNumber;
-  #endif
-  }
-
+  ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber = 0);
   ESP32CAN();
 
   //block of functions which must be overriden from CAN_COMMON to implement functionality for this hardware
@@ -97,7 +92,7 @@ public:
   friend void CAN_WatchDog_Builtin( void *pvParameters );
   friend void task_LowLevelRX(void *pvParameters);
 
-  #if SOC_TWAI_CONTROLLER_NUM == 2
+  #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
   twai_handle_t bus_handle;
   #endif
 
