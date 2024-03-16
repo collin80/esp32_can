@@ -225,9 +225,15 @@ void MCP2517FD::initializeResources()
 
                            //func        desc    stack, params, priority, handle to task, which core to pin to
     //Tasks take up the stack you allocate here in bytes plus 388 bytes overhead            
+#if defined(CONFIG_FREERTOS_UNICORE)
+    xTaskCreate(&task_MCPCAN, "CAN_FD_CALLBACK", 6144, this, 8, &taskHandleMCPCAN);
+    xTaskCreate(&task_MCPIntFD, "CAN_FD_INT", 4096, this, 19, &intTaskFD);
+    xTaskCreate(&task_ResetWatcher, "CAN_RSTWATCH", 4096, this, 7, &taskHandleReset);
+#else
     xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 6144, this, 8, &taskHandleMCPCAN, 0);
     xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 4096, this, 19, &intTaskFD, 0);
     xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 4096, this, 7, &taskHandleReset, 0);
+#endif
     if (debuggingMode) Serial.println("Done with resource init");
 
     initializedResources = true;

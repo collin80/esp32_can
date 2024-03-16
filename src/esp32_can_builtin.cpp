@@ -236,7 +236,12 @@ void ESP32CAN::_init()
         xTaskCreate(&task_CAN, "CAN_RX", 8192, this, 15, NULL);
         if (debuggingMode) Serial.println("task rx created.");
         if (debuggingMode) Serial.println("task low level rx created.");
+
+#if defined(CONFIG_FREERTOS_UNICORE)
+        xTaskCreate(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL);
+#else
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, NULL, 1);
+#endif
         if (debuggingMode) Serial.println("task watchdog created.");
         initializedResources = true;
     }
@@ -262,7 +267,11 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         }
     }
     //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+#if defined(CONFIG_FREERTOS_UNICORE)
+    xTaskCreate(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL);
+#else
     xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+#endif
     readyForTraffic = true;
     return ul_baudrate;
 }

@@ -4,8 +4,13 @@
 
 extern ESP32CAN CAN0;
 //Select which external chip you've got connected
+
+#if SOC_TWAI_CONTROLLER_NUM == 2
+extern ESP32CAN CAN1;
+#else
 extern MCP2517FD CAN1;
 //extern MCP2515 CAN1;
+#endif
 
 extern volatile uint32_t biIntsCounter;
 extern volatile uint32_t biReadFrames;
