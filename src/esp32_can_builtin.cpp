@@ -10,8 +10,7 @@
 
 #include "Arduino.h"
 #include "esp32_can_builtin.h"
-
-                                                                        //tx,         rx,           mode
+                                                                 //tx,         rx,           mode
 twai_general_config_t twai_general_cfg = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_17, GPIO_NUM_16, TWAI_MODE_NORMAL);
 twai_timing_config_t twai_speed_cfg = TWAI_TIMING_CONFIG_500KBITS();
 twai_filter_config_t twai_filters_cfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
@@ -91,12 +90,24 @@ void CAN_WatchDog_Builtin( void *pvParameters )
         vTaskDelay( xDelay );
         espCan->cyclesSinceTraffic++;
 
-        if (twai_get_status_info(&status_info) == ESP_OK)
+        esp_err_t result;
+#if SOC_TWAI_CONTROLLER_NUM == 2
+        result = twai_get_status_info_v2(espCan->bus_handle, &status_info);
+#else
+        result = twai_get_status_info(&status_info);
+#endif
+        if (result == ESP_OK)
         {
             if (status_info.state == TWAI_STATE_BUS_OFF)
             {
                 espCan->cyclesSinceTraffic = 0;
-                if (twai_initiate_recovery() != ESP_OK)
+
+#if SOC_TWAI_CONTROLLER_NUM == 2
+                result = twai_initiate_recovery_v2(espCan->bus_handle);
+#else
+                result = twai_initiate_recovery();
+#endif
+                if (result != ESP_OK)
                 {
                     printf("Could not initiate bus recovery!\n");
                 }
@@ -117,7 +128,13 @@ void task_LowLevelRX(void *pvParameters)
         twai_message_t message;
         if (espCan->readyForTraffic)
         {
-            if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
+            esp_err_t result;
+#if SOC_TWAI_CONTROLLER_NUM == 2
+            result = twai_receive_v2(espCan->bus_handle, &message, pdMS_TO_TICKS(100));
+#else
+            result = twai_receive(&message, pdMS_TO_TICKS(100));
+#endif
+            if (result == ESP_OK)
             {
                 espCan->processFrame(message);
             }
@@ -257,7 +274,14 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         //Reconfigure alerts to detect Error Passive and Bus-Off error states
         uint32_t alerts_to_enable = TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_OFF | TWAI_ALERT_AND_LOG | TWAI_ALERT_ERR_ACTIVE 
                                   | TWAI_ALERT_ARB_LOST | TWAI_ALERT_BUS_ERROR | TWAI_ALERT_TX_FAILED | TWAI_ALERT_RX_QUEUE_FULL;
-        if (twai_reconfigure_alerts(alerts_to_enable, NULL) == ESP_OK)
+
+        esp_err_t result;
+#if SOC_TWAI_CONTROLLER_NUM == 2
+        result = twai_reconfigure_alerts_v2(bus_handle, alerts_to_enable, NULL);
+#else
+        result = twai_reconfigure_alerts(alerts_to_enable, NULL);
+#endif
+        if (result == ESP_OK)
         {
             printf("Alerts reconfigured\n");
         }
@@ -341,6 +365,21 @@ void ESP32CAN::setListenOnlyMode(bool state)
 
 void ESP32CAN::enable()
 {
+#if SOC_TWAI_CONTROLLER_NUM == 2
+    if (twai_driver_install_v2(&g_config, &t_config, &f_config, &bus_handle) == ESP_OK) {
+        printf("Driver installed\n");
+    } else {
+        printf("Failed to install driver\n");
+        return;
+    }
+    //Start TWAI driver
+    if (twai_start_v2(bus_handle) == ESP_OK) {
+        // printf("Driver started\n");
+    } else {
+        printf("Failed to start driver\n");
+        return;
+    }
+#else
     if (twai_driver_install(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg) == ESP_OK)
     {
         //printf("TWAI Driver installed\n");
@@ -360,6 +399,8 @@ void ESP32CAN::enable()
         printf("Failed to start TWAI driver\n");
         return;
     }
+#endif
+
     readyForTraffic = true;
 }
 
@@ -447,7 +488,13 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
 
     //don't wait long if the queue was full. The end user code shouldn't be sending faster
     //than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
-    switch (twai_transmit(&__TX_frame, pdMS_TO_TICKS(4)))
+    esp_err_t result;
+#if SOC_TWAI_CONTROLLER_NUM == 2
+    result = twai_transmit_v2(bus_handle, &__TX_frame, pdMS_TO_TICKS(4));
+#else
+    result = twai_transmit(&__TX_frame, pdMS_TO_TICKS(4));
+#endif
+    switch (result)
     {
     case ESP_OK:
         if (debuggingMode) Serial.write('<');
