@@ -28,6 +28,8 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#ifdef MCP2515_h
+
 #include "Arduino.h"
 #include "SPI.h"
 #include "mcp2515.h"
@@ -1008,3 +1010,5 @@ void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 	//if none of the callback types caught this frame then queue it in the buffer
   xQueueSendFromISR(rxQueue, frame, NULL);
 }
+
+#endif

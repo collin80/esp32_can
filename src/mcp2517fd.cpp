@@ -1,3 +1,5 @@
+#if MCP2517_h
+
 #include "Arduino.h"
 #include <SPI.h>
 #include "mcp2517fd.h"
@@ -1653,3 +1655,5 @@ void MCP2517FD::handleFrameDispatch(CAN_FRAME &frame, int filterHit)
     //if none of the callback types caught this frame then queue it in the buffer
     xQueueSend(rxQueue, &frame, 0);
 }
+
+#endif
