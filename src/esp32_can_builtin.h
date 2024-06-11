@@ -94,7 +94,6 @@ public:
   friend void task_LowLevelRX(void *pvParameters);
 
 protected:
-  bool initializedResources;
   bool readyForTraffic;
   int cyclesSinceTraffic;
 
