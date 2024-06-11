@@ -4,16 +4,7 @@
 #include "mcp2517fd_defines.h"
 #include "mcp2517fd_regs.h"
 
-/*
-No amount of reception by itself seems to cause any mess ups in this library.
-But, transmitting rapidly causes it to break badly. At that point even in debugging mode
-there is no output of any kind. No debugging characters at all come through. It just dies.
-It seems savvycan says that the connection itself dies but the serial console is still going
-and the ESP32 itself and ESP32RET do not seem locked up.
-*/
-
-
-//20Mhz is the fastest we can go
+//20Mhz is the fastest we can go (because of the MCP2517/18 chip. The ESP32 or ESP32S3 can go much faster)
 #define FD_SPI_SPEED 10000000
 
 SPISettings fdSPISettings(FD_SPI_SPEED, MSBFIRST, SPI_MODE0);
@@ -176,13 +167,6 @@ void MCP2517FD::sendCallback(CAN_FRAME_FD *frame)
 }
 
 MCP2517FD::MCP2517FD(uint8_t CS_Pin, uint8_t INT_Pin) : CAN_COMMON(32) {
-    pinMode(CS_Pin, OUTPUT);
-    digitalWrite(CS_Pin,HIGH);
-    pinMode(INT_Pin,INPUT);
-    //digitalWrite(INT_Pin,HIGH);
-
-    //attachInterrupt(INT_Pin, MCPFD_INTHandler, FALLING);
-
     _CS = CS_Pin;
     _INT = INT_Pin;
 
@@ -214,6 +198,14 @@ void MCP2517FD::initializeResources()
 
     if (debuggingMode) Serial.println("initializeResources()");
 
+    pinMode(_CS, OUTPUT);
+    digitalWrite(_CS,HIGH);
+    pinMode(_INT,INPUT);
+    //digitalWrite(_INT,HIGH);
+
+    //attachInterrupt(_INT, MCPFD_INTHandler, FALLING);
+    if (debuggingMode) Serial.println("Initialized hardware pins");
+
     //queues allocate the requested space plus 96 bytes overhead
     if (inFDMode)
     {
@@ -229,12 +221,14 @@ void MCP2517FD::initializeResources()
         //as in the ESP32-Builtin CAN we create a queue and task to do callbacks outside the interrupt handler
         callbackQueueMCP = xQueueCreate(16, sizeof(CAN_FRAME));
     }
+    if (debuggingMode) Serial.println("Initialized queues");
 
                            //func        desc    stack, params, priority, handle to task, which core to pin to
     //Tasks take up the stack you allocate here in bytes plus 388 bytes overhead            
     xTaskCreatePinnedToCore(&task_MCPCAN, "CAN_FD_CALLBACK", 6144, this, 8, &taskHandleMCPCAN, 0);
     xTaskCreatePinnedToCore(&task_MCPIntFD, "CAN_FD_INT", 4096, this, 19, &intTaskFD, 0);
     xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH", 4096, this, 7, &taskHandleReset, 0);
+    if (debuggingMode) Serial.println("Done with resource init");
 
     initializedResources = true;
 }
@@ -304,6 +298,8 @@ int MCP2517FD::Init(uint32_t CAN_Bus_Speed, uint8_t Freq, uint8_t SJW) {
     if(SJW < 1) SJW = 1;
     if(SJW > 4) SJW = 4;
     REG_CiINT interruptFlags;
+
+    if (debuggingMode) Serial.println("Initializing MCP2517FD");
 
     initSPI();
 
@@ -692,7 +688,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     txDelayConfig.bF.TDCMode = 2; //automatic mode. The module will figure out the proper delay itself
     txDelayConfig.bF.TDCValue = 0; //this value set by hardware in auto mode
     txDelayConfig.bF.TDCOffset = (dataCfg.bF.BRP + 1) * (tseg1); //set value (dbrp * dtseg1) as a basepoint
-
+    nominalCfg.bF.SJW = tseg2 - 1;
+    dataCfg.bF.SJW = tseg2 - 1;
     if (debuggingMode) Serial.printf("Data Settings:  TSEG1: %u   TSEG2: %u\n", tseg1, tseg2);
 
     canConfig.bF.IsoCrcEnable = 1; //It's likely we need ISO CRC mode active to get FD to work properly
@@ -941,78 +938,100 @@ void MCP2517FD::printDebug()
 }
 
 void MCP2517FD::Reset() {
+    uint8_t buf[2];
+    buf[0] = CMD_RESET;
+    buf[1] = CMD_RESET;
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer(CMD_RESET); //always need to send 12 bit address too
-    SPI.transfer(CMD_RESET); //so even reset is two bytes
+    SPI.writeBytes(buf, 2);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
 }
 
 uint32_t MCP2517FD::Read(uint16_t address) {
+    uint8_t out_buf[8];
+    uint8_t in_buff[8];
+    out_buf[0] = (CMD_READ << 4)| ( (address >> 8) & 0xF);
+    out_buf[1] = address & 0xFF;
+    out_buf[2] = out_buf[3] = out_buf[4] = out_buf[5] = 0;
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_READ << 4)| ( (address >> 8) & 0xF) );
-    SPI.transfer(address & 0xFF);
-    uint32_t data = SPI.transfer(0);
-    data += (SPI.transfer(0) << 8);
-    data += (SPI.transfer(0) << 16);
-    data += (SPI.transfer(0) << 24);
+    SPI.transferBytes(out_buf, in_buff, 6);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
+
+    uint32_t data = *((uint32_t *)(in_buff + 2));
     return data;
 }
 
 uint8_t MCP2517FD::Read8(uint16_t address)
 {
+    uint8_t out_buff[4];
+    uint8_t in_buff[4];
+    out_buff[0] = (CMD_READ << 4) | ((address >> 8) & 0xF);
+    out_buff[1] = address & 0xFF;
+    out_buff[2] = 0;
+
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_READ << 4) | ((address >> 8) & 0xF));
-    SPI.transfer(address & 0xFF);
-    uint8_t data = SPI.transfer(0x00);
+    SPI.transferBytes(out_buff, in_buff, 3);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
-    return data;
+    return in_buff[2];
 }
 
 uint16_t MCP2517FD::Read16(uint16_t address)
 {
+    uint8_t out_buff[5];
+    uint8_t in_buff[5];
+    out_buff[0] = (CMD_READ << 4) | ((address >> 8) & 0xF);
+    out_buff[1] = address & 0xFF;
+    out_buff[2] = out_buff[3] = 0;
+
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_READ << 4) | ((address >> 8) & 0xF));
-    SPI.transfer(address & 0xFF);
-    uint16_t data = SPI.transfer(0);
-    data += (SPI.transfer(0) << 8);
+    SPI.transferBytes(out_buff, in_buff, 4);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
-    return data;
+    return *((uint16_t *)(in_buff + 2));
 }
 
 void MCP2517FD::Read(uint16_t address, uint8_t data[], uint16_t bytes) {
+    uint8_t out_buff[100];
+    uint8_t in_buff[100];
+
+    out_buff[0] = (CMD_READ << 4) | ((address >> 8) & 0xF);
+    out_buff[1] = address & 0xFF;
+    for (int i = 0; i < bytes; i++) out_buff[2 + i] = 0;
+
     // allows for sequential reading of registers starting at address - see data sheet
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_READ << 4) | ((address >> 8) & 0xF));
-    SPI.transfer(address & 0xFF);
-    SPI.transferBytes(NULL, data, bytes); //read only operation
+    SPI.transferBytes(out_buff, in_buff, bytes + 2); //read only operation
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
+    memcpy(data, (in_buff + 2), bytes);
 }
 
 uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
-    uint32_t buffer[19]; //76 bytes
+    uint8_t out_buff[100];
+    uint8_t in_buff[100];
+    uint32_t *ptr_buff = (uint32_t *)(&in_buff[2]);
+
+    memset(out_buff, 0, 100);
+    out_buff[0] = (CMD_READ << 4) | ((address >> 8) & 0xF);
+    out_buff[1] = address & 0xFF;
 
     //there is no read buffer command anymore. Need to read from RAM on the chip
     //quickly read the whole thing then process it afterward
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_READ << 4) | ((address >> 8) & 0xF));
-    SPI.transfer(address & 0xFF);
+
     //read enough of the RAM to get an 8 byte message. 
     //Then we check to see if we really need to read more.
     //This prevents having to read 64 data bytes if we were just receiving normal frames.
-    SPI.transferBytes(NULL, (uint8_t *)&buffer[0], 20);
-    message.length = buffer[1] & 0xF;
+    SPI.transferBytes(out_buff, in_buff, 22);
+    message.length = ptr_buff[1] & 0xF;
     switch (message.length)
     {
     case 9:
@@ -1038,7 +1057,7 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
         break;
     }
     int neededBytes = message.length - 8;
-    if (neededBytes > 0) SPI.transferBytes(NULL, (uint8_t *)&buffer[5], neededBytes);
+    if (neededBytes > 0) SPI.transferBytes(&out_buff[22], &in_buff[22], neededBytes);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
   /*message in RAM is as follows:
@@ -1055,31 +1074,33 @@ uint32_t MCP2517FD::ReadFrameBuffer(uint16_t address, CAN_FRAME_FD &message) {
     The next 32 bits are all the timestamp (in microseconds for us)
     Then each additional byte is a data byte (up to 64 bytes)
   */
-    message.extended = (buffer[1] >> 4) & 1;
-    if (message.extended) message.id = unpackExtValue(buffer[0] & 0x1FFFFFFFull);
-    else message.id = buffer[0] & 0x7FF;
+    message.extended = (ptr_buff[1] >> 4) & 1;
+    if (message.extended) message.id = unpackExtValue(ptr_buff[0] & 0x1FFFFFFFull);
+    else message.id = ptr_buff[0] & 0x7FF;
     message.fid = 0;
     message.priority = 0;
-    message.fdMode = (buffer[1] >> 7) & 1;
+    message.fdMode = (ptr_buff[1] >> 7) & 1;
     if (message.fdMode)
-        message.rrs = buffer[0] >> 29 & 1;
+        message.rrs = ptr_buff[0] >> 29 & 1;
     else
-        message.rrs = buffer[1] >> 5 & 1;
-    message.timestamp = buffer[2];
+        message.rrs = ptr_buff[1] >> 5 & 1;
+    message.timestamp = ptr_buff[2];
     if (!message.fdMode && message.length > 8) message.length = 8;
     //only copy the number of words we really have to.
     int copyWords = (message.length + 3) / 4;
-    for (int j = 0; j < copyWords; j++) message.data.uint32[j] = buffer[3 + j];
-    return (buffer[1] >> 11) & 31; //return which filter produced this message
+    for (int j = 0; j < copyWords; j++) message.data.uint32[j] = ptr_buff[3 + j];
+    return (ptr_buff[1] >> 11) & 31; //return which filter produced this message
 }
 
 void MCP2517FD::Write8(uint16_t address, uint8_t data) {
     //taskDISABLE_INTERRUPTS();
+    uint8_t buf[4];
+    buf[0] = (CMD_WRITE << 4) | ((address >> 8) & 0xF);
+    buf[1] = address & 0xFF;
+    buf[2] = data;
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_WRITE << 4) | ((address >> 8) & 0xF) );
-    SPI.transfer(address & 0xFF);
-    SPI.transfer(data);
+    SPI.writeBytes(buf, 3);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
     //taskENABLE_INTERRUPTS();
@@ -1087,12 +1108,14 @@ void MCP2517FD::Write8(uint16_t address, uint8_t data) {
 
 void MCP2517FD::Write16(uint16_t address, uint16_t data) {
     //taskDISABLE_INTERRUPTS();
+    uint8_t buf[5];
+    buf[0] = (CMD_WRITE << 4) | ((address >> 8) & 0xF);
+    buf[1] = address & 0xFF;
+    buf[2] = data & 0xFF;
+    buf[3] = (data >> 8) & 0xFF;
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_WRITE << 4) | ((address >> 8) & 0xF) );
-    SPI.transfer(address & 0xFF);
-    SPI.transfer(data & 0xFF);
-    SPI.transfer((data >> 8) & 0xFF);
+    SPI.writeBytes(buf, 4);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
     //taskENABLE_INTERRUPTS();
@@ -1100,14 +1123,16 @@ void MCP2517FD::Write16(uint16_t address, uint16_t data) {
 
 void MCP2517FD::Write(uint16_t address, uint32_t data) {
     //taskDISABLE_INTERRUPTS();
+    uint8_t buf[7];
+    buf[0] = (CMD_WRITE << 4) | ((address >> 8) & 0xF);
+    buf[1] = address & 0xFF;
+    buf[2] = data & 0xFF;
+    buf[3] = (data >> 8) & 0xFF;
+    buf[4] = (data >> 16) & 0xFF;
+    buf[5] = (data >> 24) & 0xFF;
     SPI.beginTransaction(fdSPISettings);
     digitalWrite(_CS,LOW);
-    SPI.transfer((CMD_WRITE << 4) | ((address >> 8) & 0xF) );
-    SPI.transfer(address & 0xFF);
-    SPI.transfer(data & 0xFF);
-    SPI.transfer((data >> 8) & 0xFF);
-    SPI.transfer((data >> 16) & 0xFF);
-    SPI.transfer((data >> 24) & 0xFF);
+    SPI.writeBytes(buf, 6);
     digitalWrite(_CS,HIGH);
     SPI.endTransaction();
     //taskENABLE_INTERRUPTS();
@@ -1200,6 +1225,13 @@ void MCP2517FD::LoadFrameBuffer(uint16_t address, CAN_FRAME_FD &message)
     SPI.endTransaction();
     //taskENABLE_INTERRUPTS();
     Write8(ADDR_CiFIFOCON + 1, 3); //Set UINC and TX_Request
+    if (debuggingMode)
+    {
+        Serial.write('_');
+        uint32_t cnf = Read(ADDR_CiFIFOCON);
+        Serial.printf("FIFOCON: 0x%x\n", cnf);
+    }
+    
 }
 
 bool MCP2517FD::Interrupt() {
@@ -1434,6 +1466,7 @@ void MCP2517FD::handleTXFifoISR(int fifo)
         LoadFrameBuffer( addr + 0x400, frameFD );
         wroteFrames = 1;
         status = Read(ADDR_CiFIFOSTA + (CiFIFO_OFFSET * fifo));
+        //if (debuggingMode) Serial.printf("After write Status: %x\n", status);
     }
     if (wroteFrames != 0)
     {

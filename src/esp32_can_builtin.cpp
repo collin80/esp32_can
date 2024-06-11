@@ -52,6 +52,7 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin) : CAN_COMMON(32)
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
     cyclesSinceTraffic = 0;
+    readyForTraffic = false;
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
@@ -71,6 +72,8 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
         filters[i].extended = false;
         filters[i].configured = false;
     }
+
+    readyForTraffic = false;
     cyclesSinceTraffic = 0;
 }
 
@@ -111,14 +114,20 @@ void CAN_WatchDog_Builtin( void *pvParameters )
 void task_LowLevelRX(void *pvParameters)
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    
     while (1)
     {
         twai_message_t message;
-        if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
+        if (espCan->readyForTraffic)
         {
-            espCan->processFrame(message);
+            if (twai_receive(&message, pdMS_TO_TICKS(100)) == ESP_OK)
+            {
+                espCan->processFrame(message);
+            }
         }
+        else vTaskDelay(pdMS_TO_TICKS(100));
     }
+    
 }
 
 /*
@@ -220,6 +229,7 @@ void ESP32CAN::_init()
     if (!CAN_WatchDog_Builtin_handler) {
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
     }
+    if (debuggingMode) Serial.println("_init done");
 }
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
@@ -237,9 +247,12 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         }
         else
         {
-        printf("Failed to reconfigure alerts");
+            printf("Failed to reconfigure alerts");
         }
     }
+    //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+    readyForTraffic = true;
     return ul_baudrate;
 }
 
@@ -249,6 +262,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
 
     _init();
 
+    readyForTraffic = false;
     twai_stop();
     twai_general_cfg.mode = TWAI_MODE_LISTEN_ONLY;
     int idx = 0;
@@ -305,6 +319,13 @@ void ESP32CAN::setListenOnlyMode(bool state)
     enable();
 }
 
+void ESP32CAN::setNoACKMode(bool state)
+{
+    disable();
+    twai_general_cfg.mode = state?TWAI_MODE_NO_ACK:TWAI_MODE_NORMAL;
+    enable();
+}
+
 void ESP32CAN::enable()
 {
     if (twai_driver_install(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg) == ESP_OK)
@@ -334,6 +355,7 @@ void ESP32CAN::enable()
         printf("Failed to start TWAI driver\n");
         return;
     }
+    readyForTraffic = true;
 }
 
 void ESP32CAN::disable()
@@ -362,6 +384,7 @@ void ESP32CAN::disable()
     } else {
         return;
     }
+    readyForTraffic = false;
 }
 
 //This function is too big to be running in interrupt context. Refactored so it doesn't.
