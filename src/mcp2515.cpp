@@ -36,9 +36,9 @@
 
 SPISettings mcpSPISettings(8000000, MSBFIRST, SPI_MODE0);
 
-static TaskHandle_t intDelegateTask = NULL;
-
-QueueHandle_t	callbackQueueM15;
+DRAM_ATTR TaskHandle_t intDelegateTask = NULL;
+QueueHandle_t callbackQueueM15;
+TaskHandle_t taskHandleReset = NULL;
 
 void MCP_INTHandler() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -79,6 +79,20 @@ void task_MCPInt15( void *pvParameters )
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY); //wait infinitely for this task to be notified
     mcpCan->intHandler(); //not truly an interrupt handler anymore but still kind of
   }
+}
+
+//checks every 2 seconds to see if the chip is in error state, and reset it if so.
+void task_ResetWatcher(void *pvParameters)
+{
+    MCP2515* mcpCan = (MCP2515*)pvParameters;
+    const TickType_t xDelay = 2000 / portTICK_PERIOD_MS;
+
+    while (1) {
+        vTaskDelay(xDelay);
+        if(mcpCan->isInErrorState()) {
+            mcpCan->resetErrors();
+        }
+    }
 }
 
 void MCP2515::sendCallback(CAN_FRAME *frame)
@@ -131,8 +145,9 @@ void MCP2515::initializeResources()
   callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
-  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 4096, this, 3, NULL, 0);
-  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 4096, this, 10, &intDelegateTask, 0);
+  xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 4096, this, 8, NULL, 0);
+  xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 4096, this, 19, &intDelegateTask, 0);
+  xTaskCreatePinnedToCore(&task_ResetWatcher, "CAN_RSTWATCH_M15", 1536, this, 7, &taskHandleReset, 0);
 
   initializedResources = true;
 }
@@ -1002,4 +1017,20 @@ void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 	} 
 	//if none of the callback types caught this frame then queue it in the buffer
   xQueueSendFromISR(rxQueue, frame, NULL);
+}
+
+bool MCP2515::isInErrorState() {
+    byte errorRegisterContents = Read(EFLG);
+   if (errorRegisterContents & EFLG_ERRORMASK) {
+        // Serial.print("MCP2515 is in error state.  Register EFLG contains ");
+        // Serial.println(errorRegisterContents);
+        return true;
+   } else {
+        return false;
+   }
+}
+
+void MCP2515::resetErrors() {
+    BitModify(CANINTF, 0xFF, 0);        // acknowledge any interrupts
+    BitModify(EFLG, RX1OVR | RX0OVR, 0);    // clear the error flags
 }

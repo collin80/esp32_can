@@ -91,6 +91,8 @@ class MCP2515 : public CAN_COMMON
     void GetRXMask(uint8_t mask, uint32_t &filterVal);
 	void sendCallback(CAN_FRAME *frame);
     void setBuffer0RolloverBUKT(bool enable);
+    bool isInErrorState();
+    void resetErrors();
 
 	void InitFilters(bool permissive);
 	void intHandler();
