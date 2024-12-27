@@ -54,7 +54,7 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_
     rxBufferSize = BI_RX_BUFFER_SIZE;
     
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    bus_handle.controller_id = busNumber;
+    twai_general_cfg.controller_id = busNumber;
 #endif
 }
 
@@ -370,7 +370,7 @@ void ESP32CAN::setListenOnlyMode(bool state)
 void ESP32CAN::enable()
 {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    if (twai_driver_install_v2(&g_config, &t_config, &f_config, &bus_handle) == ESP_OK) {
+    if (twai_driver_install_v2(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg, &bus_handle) == ESP_OK) {
         printf("Driver installed\n");
     } else {
         printf("Failed to install driver\n");
