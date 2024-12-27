@@ -696,7 +696,8 @@ bool MCP2517FD::_initFD(uint32_t nominalSpeed, uint32_t dataSpeed, uint8_t freq,
     txDelayConfig.bF.TDCMode = 2; //automatic mode. The module will figure out the proper delay itself
     txDelayConfig.bF.TDCValue = 0; //this value set by hardware in auto mode
     txDelayConfig.bF.TDCOffset = (dataCfg.bF.BRP + 1) * (tseg1); //set value (dbrp * dtseg1) as a basepoint
-
+    nominalCfg.bF.SJW = tseg2 - 1;
+    dataCfg.bF.SJW = tseg2 - 1;
     if (debuggingMode) Serial.printf("Data Settings:  TSEG1: %u   TSEG2: %u\n", tseg1, tseg2);
 
     canConfig.bF.IsoCrcEnable = 1; //It's likely we need ISO CRC mode active to get FD to work properly

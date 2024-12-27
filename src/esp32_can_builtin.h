@@ -76,6 +76,7 @@ public:
   uint32_t beginAutoSpeed();
   uint32_t set_baudrate(uint32_t ul_baudrate);
   void setListenOnlyMode(bool state);
+  void setNoACKMode(bool state);
   void enable();
   void disable();
   bool sendFrame(CAN_FRAME& txFrame);
@@ -97,7 +98,6 @@ public:
   #endif
 
 protected:
-  bool initializedResources;
   bool readyForTraffic;
   int cyclesSinceTraffic;
 
