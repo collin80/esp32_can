@@ -249,9 +249,9 @@ void ESP32CAN::_init()
 
     if (!CAN_WatchDog_Builtin_handler) {
 #if defined(CONFIG_FREERTOS_UNICORE)
-        xTaskCreate(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, &CAN_WatchDog_Builtin_handler);
+        xTaskCreate(&CAN_WatchDog_Builtin, "CAN_WD_BI_CAN" + twai_general_cfg.controller_id, 2048, this, 10, &CAN_WatchDog_Builtin_handler);
 #else
-        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI", 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
+        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI_CAN" + twai_general_cfg.controller_id, 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
 #endif
     }
     if (debuggingMode) Serial.println("_init done");
@@ -557,7 +557,7 @@ uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
 {
     CAN_FRAME frame;
     //receive next CAN frame from queue
-    if(xQueueReceive(rx_queue,&frame, 0) == pdTRUE)
+    if(xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
     {
         msg = frame; //do a copy in the case that the receive worked
         return true;
