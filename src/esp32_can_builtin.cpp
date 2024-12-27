@@ -168,10 +168,12 @@ void task_CAN( void *pvParameters )
 
     while (1)
     {
-        //receive next CAN frame from queue and fire off the callback
-        if(xQueueReceive(callbackQueue, &rxFrame, portMAX_DELAY)==pdTRUE)
-        {
-            espCan->sendCallback(&rxFrame);
+        if (uxQueueMessagesWaiting(callbackQueue)) {
+            //receive next CAN frame from queue and fire off the callback
+            if(xQueueReceive(callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
+            {
+                espCan->sendCallback(&rxFrame);
+            }
         }
     }
 }
@@ -248,10 +250,16 @@ void ESP32CAN::_init()
     }
 
     if (!CAN_WatchDog_Builtin_handler) {
-#if defined(CONFIG_FREERTOS_UNICORE)
-        xTaskCreate(&CAN_WatchDog_Builtin, "CAN_WD_BI_CAN" + twai_general_cfg.controller_id, 2048, this, 10, &CAN_WatchDog_Builtin_handler);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+        const char *canWatchDogTaskName = "CAN_WD_BI_CAN" + twai_general_cfg.controller_id;
 #else
-        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, "CAN_WD_BI_CAN" + twai_general_cfg.controller_id, 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
+        const char *canWatchDogTaskName = "CAN_WD_BI";
+#endif
+
+#if defined(CONFIG_FREERTOS_UNICORE)
+        xTaskCreate(&CAN_WatchDog_Builtin, canWatchDogTaskName, 2048, this, 10, &CAN_WatchDog_Builtin_handler);
+#else
+        xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, canWatchDogTaskName, 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
 #endif
     }
     if (debuggingMode) Serial.println("_init done");
@@ -366,16 +374,9 @@ void ESP32CAN::enable()
 {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     if (twai_driver_install_v2(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg, &bus_handle) == ESP_OK) {
-        printf("Driver installed\n");
+        printf("Driver installed - bus %d\n", twai_general_cfg.controller_id);
     } else {
         printf("Failed to install driver\n");
-        return;
-    }
-    //Start TWAI driver
-    if (twai_start_v2(bus_handle) == ESP_OK) {
-        // printf("Driver started\n");
-    } else {
-        printf("Failed to start driver\n");
         return;
     }
 #else
@@ -388,18 +389,41 @@ void ESP32CAN::enable()
         printf("Failed to install TWAI driver\n");
         return;
     }
+#endif
 
     callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
     rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
 
-    xTaskCreate(&task_CAN, "CAN_RX", 8192, this, 15, &task_CAN_handler);
-    //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
-    xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, &task_LowLevelRX_handler, 1);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    const char* canHandlerTaskName = "CAN_RX_CAN" + twai_general_cfg.controller_id;
+    const char* canLowLevelTaskName = "CAN_LORX_CAN" + twai_general_cfg.controller_id;
+#else
+    const char* canHandlerTaskName = "CAN_RX_CAN";
+    const char* canLowLevelTaskName = "CAN_LORX_CAN";
+#endif
 
+    xTaskCreate(&task_CAN, canHandlerTaskName, 8192, this, 15, &task_CAN_handler);
+
+#if defined(CONFIG_FREERTOS_UNICORE)
+    xTaskCreate(&task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler);
+#else
+    //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    xTaskCreatePinnedToCore(&task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler, 1);
+#endif
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    //Start TWAI driver
+    if (twai_start_v2(bus_handle) == ESP_OK) {
+        printf("Driver started - bus %d\n", twai_general_cfg.controller_id);
+    } else {
+        printf("Failed to start driver\n");
+        return;
+    }
+#else
     // Start TWAI driver
     if (twai_start() == ESP_OK)
     {
-        //printf("TWAI Driver started\n");
+        printf("TWAI Driver started\n");
     }
     else
     {
@@ -557,10 +581,14 @@ uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
 {
     CAN_FRAME frame;
     //receive next CAN frame from queue
-    if(xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
-    {
-        msg = frame; //do a copy in the case that the receive worked
-        return true;
+    if (uxQueueMessagesWaiting(rx_queue)) {
+        if(xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
+        {
+            msg = frame; //do a copy in the case that the receive worked
+            return true;
+        }
+        else
+            return false;
     }
     return false; //otherwise we leave the msg variable alone and just return false
 }
