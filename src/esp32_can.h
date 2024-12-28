@@ -19,6 +19,12 @@
 extern ESP32CAN CAN0;
 //Select which external chip you've got connected
 
+#if not defined(USES_MCP2517FD) and not defined(USES_MCP2515) and ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 2, 0) and not SOC_TWAI_CONTROLLER_NUM == 2
+#error "You must define either USES_MCP2517FD or USES_MCP2515"
+#define USES_MCP2515
+// #define USES_MCP2517FD
+#endif
+
 #if SOC_TWAI_CONTROLLER_NUM == 2 and ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
 extern ESP32CAN CAN1;
 
