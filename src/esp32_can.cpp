@@ -11,14 +11,17 @@ ESP32CAN __attribute__((weak)) CAN0(GPIO_NUM_16, GPIO_NUM_17, 0) ;
 #if SOC_TWAI_CONTROLLER_NUM == 2 and ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
 ESP32CAN __attribute__((weak)) CAN1(GPIO_NUM_18, GPIO_NUM_19, 1);
 
-#if defined(HAS_EXTERNAL_CAN_CONTROLLER)
+#if defined(USES_MCP2517FD)
 //CS, INT
 MCP2517FD __attribute__((weak)) CAN2(5, 27) ;
+#elif defined(USES_MCP2515)
+MCP2515 __attribute__((weak)) CAN2(5, 27) ;
 #endif
 
-#elif defined (HAS_EXTERNAL_CAN_CONTROLLER)
+#elif defined (USES_MCP2517FD)
 //Select and uncomment the proper module you've got connected via SPI
 //CS, INT
 MCP2517FD __attribute__((weak)) CAN1(5, 27) ;
-//MCP2515 __attribute__((weak)) CAN1(5, 27) ;
+#elif defined (USES_MCP2515)
+MCP2515 __attribute__((weak)) CAN1(5, 27) ;
 #endif
