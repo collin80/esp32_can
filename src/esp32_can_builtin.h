@@ -41,6 +41,8 @@
 #include "esp_system.h"
 #include "esp_adc_cal.h"
 #include "driver/twai.h"
+#include <string.h>
+#include <sstream>
 
 //#define DEBUG_SETUP
 #define BI_NUM_FILTERS 32
@@ -100,11 +102,25 @@ public:
 protected:
   bool readyForTraffic;
   int cyclesSinceTraffic;
+                                                                      //tx,         rx,           mode
+  twai_general_config_t twai_general_cfg = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_17, GPIO_NUM_16, TWAI_MODE_NORMAL);
+  twai_timing_config_t twai_speed_cfg = TWAI_TIMING_CONFIG_500KBITS();
+  twai_filter_config_t twai_filters_cfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+  QueueHandle_t callbackQueue;
+  QueueHandle_t rx_queue;
+
+  TaskHandle_t CAN_WatchDog_Builtin_handler = NULL;
+  TaskHandle_t task_CAN_handler = NULL;
+  TaskHandle_t task_LowLevelRX_handler = NULL;
 
 private:
   // Pin variables
   ESP32_FILTER filters[BI_NUM_FILTERS];
   int rxBufferSize;
+
+  static void task_CAN(void *pvParameters);
+  static void task_LowLevelRX(void *pvParameters);
 };
 
 extern QueueHandle_t callbackQueue;

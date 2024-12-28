@@ -10,18 +10,6 @@
 
 #include "Arduino.h"
 #include "esp32_can_builtin.h"
-                                                                 //tx,         rx,           mode
-twai_general_config_t twai_general_cfg = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_17, GPIO_NUM_16, TWAI_MODE_NORMAL);
-twai_timing_config_t twai_speed_cfg = TWAI_TIMING_CONFIG_500KBITS();
-twai_filter_config_t twai_filters_cfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-
-QueueHandle_t callbackQueue;
-QueueHandle_t rx_queue;
-
-TaskHandle_t CAN_WatchDog_Builtin_handler = NULL;
-TaskHandle_t task_CAN_handler = NULL;
-TaskHandle_t task_LowLevelRX_handler = NULL;
-
 //because of the way the TWAI library works, it's just easier to store the valid timings here and anything not found here
 //is just plain not supported. If you need a different speed then add it here. Be sure to leave the zero record at the end
 //as it serves as a terminator
@@ -126,7 +114,7 @@ void CAN_WatchDog_Builtin( void *pvParameters )
 //infinitely loops accepting frames from the TWAI driver. Calls
 //our processing routine which then applies the custom 32 filters and
 //decides whether to trigger callbacks or queue the frame (or throw it away)
-void task_LowLevelRX(void *pvParameters)
+void ESP32CAN::task_LowLevelRX(void *pvParameters)
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
     
@@ -161,21 +149,27 @@ bit   31 -    If set indicates an object callback
 bits  24-30 - Idx into listener table
 bits  0-7   - Mailbox number that triggered callback
 */
-void task_CAN( void *pvParameters )
+void ESP32CAN::task_CAN( void *pvParameters )
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
     CAN_FRAME rxFrame;
 
     while (1)
     {
-        if (uxQueueMessagesWaiting(callbackQueue)) {
+        if (uxQueueMessagesWaiting(espCan->callbackQueue)) {
             //receive next CAN frame from queue and fire off the callback
-            if(xQueueReceive(callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
+            if(xQueueReceive(espCan->callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
             {
                 espCan->sendCallback(&rxFrame);
             }
         }
+
+#if defined(CONFIG_FREERTOS_UNICORE)
+        delay(10);
+#endif
     }
+
+    vTaskDelete(NULL);
 }
 
 void ESP32CAN::sendCallback(CAN_FRAME *frame)
@@ -251,7 +245,9 @@ void ESP32CAN::_init()
 
     if (!CAN_WatchDog_Builtin_handler) {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-        const char *canWatchDogTaskName = "CAN_WD_BI_CAN" + twai_general_cfg.controller_id;
+        std::ostringstream canWatchDogTaskNameStream;
+        canWatchDogTaskNameStream << "CAN_WD_BI_CAN" << twai_general_cfg.controller_id;
+        const char *canWatchDogTaskName = canWatchDogTaskNameStream.str().c_str();
 #else
         const char *canWatchDogTaskName = "CAN_WD_BI";
 #endif
@@ -267,8 +263,11 @@ void ESP32CAN::_init()
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 {
+    ESP_LOGD("CAN", "Init called");
     _init();
+    ESP_LOGD("CAN", "Init done");
     set_baudrate(ul_baudrate);
+    ESP_LOGD("CAN", "Baudrate set");
     if (debuggingMode)
     {
         //Reconfigure alerts to detect Error Passive and Bus-Off error states
@@ -292,9 +291,9 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
     }
     //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
 #if defined(CONFIG_FREERTOS_UNICORE)
-    xTaskCreate(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL);
+    xTaskCreate(ESP32CAN::task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL);
 #else
-    xTaskCreatePinnedToCore(&task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+    xTaskCreatePinnedToCore(ESP32CAN::task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
 #endif
     readyForTraffic = true;
     return ul_baudrate;
@@ -376,13 +375,13 @@ void ESP32CAN::enable()
     if (twai_driver_install_v2(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg, &bus_handle) == ESP_OK) {
         printf("Driver installed - bus %d\n", twai_general_cfg.controller_id);
     } else {
-        printf("Failed to install driver\n");
+        printf("Failed to install driver - bus %d\n", twai_general_cfg.controller_id);
         return;
     }
 #else
     if (twai_driver_install(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg) == ESP_OK)
     {
-        //printf("TWAI Driver installed\n");
+        printf("TWAI Driver installed\n");
     }
     else
     {
@@ -391,21 +390,29 @@ void ESP32CAN::enable()
     }
 #endif
 
+    printf("Creating queues\n");
+
     callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
     rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    const char* canHandlerTaskName = "CAN_RX_CAN" + twai_general_cfg.controller_id;
-    const char* canLowLevelTaskName = "CAN_LORX_CAN" + twai_general_cfg.controller_id;
+    std::ostringstream canHandlerTaskNameStream;
+    std::ostringstream canLowLevelTaskNameStream;
+    canHandlerTaskNameStream << "CAN_RX_CAN" << twai_general_cfg.controller_id;
+    canLowLevelTaskNameStream << "CAN_LORX_CAN" << twai_general_cfg.controller_id;
+    const char* canHandlerTaskName = canHandlerTaskNameStream.str().c_str();
+    const char* canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
 #else
     const char* canHandlerTaskName = "CAN_RX_CAN";
     const char* canLowLevelTaskName = "CAN_LORX_CAN";
 #endif
 
-    xTaskCreate(&task_CAN, canHandlerTaskName, 8192, this, 15, &task_CAN_handler);
+    printf("Starting can handler task\n");
+    xTaskCreate(ESP32CAN::task_CAN, canHandlerTaskName, 8192, this, 15, &task_CAN_handler);
 
 #if defined(CONFIG_FREERTOS_UNICORE)
-    xTaskCreate(&task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler);
+    printf("Starting low level RX task\n");
+    xTaskCreate(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler);
 #else
     //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
     xTaskCreatePinnedToCore(&task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler, 1);
