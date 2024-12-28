@@ -11,6 +11,11 @@
 #include "mcp2515.h"
 #endif
 
+// only one of these can be defined
+#if defined(USES_MCP2517FD) and defined(USES_MCP2515)
+#error "Only one of USES_MCP2517FD or USES_MCP2515 can be defined"
+#endif
+
 extern ESP32CAN CAN0;
 //Select which external chip you've got connected
 
