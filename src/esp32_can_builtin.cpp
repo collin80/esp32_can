@@ -395,6 +395,9 @@ bool ESP32CAN::processFrame(twai_message_t &frame)
 
     cyclesSinceTraffic = 0; //reset counter to show that we are receiving traffic
 
+    // get timestamp in microseconds asap after CAN frame is received.
+    msg.timestamp = micros();
+	
     msg.id = frame.identifier;
     msg.length = frame.data_length_code;
     msg.rtr = frame.rtr;
