@@ -1,8 +1,8 @@
 esp32_can
 ==========
 **January 2025:<br/> 
-Updated ESP32CAN::processFrame() to set msg.timestamp to micros()
-for accurate CAN timestams when saving CAN data to the SD card.**
+Updated ESP32CAN::processFrame() to set msg.timestamps to micros()
+for accurate CAN timestamps when saving to the SD card for [ESP32_RET_SD](https://github.com/MotorvateDIY/ESP32_RET_SD)**
 
 A new, unified library all inclusive of code needed to make it operate. Implements
 a CAN driver for the built-in CAN hardware on an ESP32. Also implements a driver
