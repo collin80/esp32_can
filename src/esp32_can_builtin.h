@@ -92,11 +92,10 @@ public:
 
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
 
-  friend void CAN_WatchDog_Builtin( void *pvParameters );
-  friend void task_LowLevelRX(void *pvParameters);
+  static void CAN_WatchDog_Builtin( void *pvParameters );
 
   #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-  twai_handle_t bus_handle;
+    twai_handle_t bus_handle;
   #endif
 
 protected:

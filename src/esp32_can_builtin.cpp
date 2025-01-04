@@ -43,6 +43,7 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
+    bus_handle = nullptr;
     
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     twai_general_cfg.controller_id = busNumber;
@@ -53,6 +54,7 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
 {
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
+    bus_handle = nullptr;
 
     rxBufferSize = BI_RX_BUFFER_SIZE;
 
@@ -74,7 +76,7 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     twai_general_cfg.tx_io = txPin;
 }
 
-void CAN_WatchDog_Builtin( void *pvParameters )
+void ESP32CAN::CAN_WatchDog_Builtin( void *pvParameters )
 {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
     const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
@@ -290,10 +292,18 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
         }
     }
     //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
-#if defined(CONFIG_FREERTOS_UNICORE)
-    xTaskCreate(ESP32CAN::task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    std::ostringstream canLowLevelTaskNameStream;
+    canLowLevelTaskNameStream << "CAN_LORX_CAN" << twai_general_cfg.controller_id;
+    const char* canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
 #else
-    xTaskCreatePinnedToCore(ESP32CAN::task_LowLevelRX, "CAN_LORX", 4096, this, 19, NULL, 1);
+    const char* canLowLevelTaskName = "CAN_LORX_CAN0";
+#endif
+
+#if defined(CONFIG_FREERTOS_UNICORE)
+    xTaskCreate(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, NULL);
+#else
+    xTaskCreatePinnedToCore(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, NULL, 1);
 #endif
     readyForTraffic = true;
     return ul_baudrate;
