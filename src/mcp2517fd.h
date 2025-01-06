@@ -124,6 +124,4 @@ class MCP2517FD : public CAN_COMMON
     uint32_t cachedDiag1;
 };
 
-extern MCP2517FD CAN1;
-
 #endif

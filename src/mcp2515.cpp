@@ -28,6 +28,8 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#ifdef MCP2515_h
+
 #include "Arduino.h"
 #include "SPI.h"
 #include "mcp2515.h"
@@ -131,8 +133,13 @@ void MCP2515::initializeResources()
   callbackQueueM15 = xQueueCreate(16, sizeof(CAN_FRAME));
 
                             //func        desc    stack, params, priority, handle to task, core to pin to
+#if defined(CONFIG_FREERTOS_UNICORE)
+  xTaskCreate(&task_MCP15, "CAN_RX_M15", 4096, this, 3, NULL);
+  xTaskCreate(&task_MCPInt15, "CAN_INT_M15", 4096, this, 10, NULL);
+#else
   xTaskCreatePinnedToCore(&task_MCP15, "CAN_RX_M15", 4096, this, 3, NULL, 0);
   xTaskCreatePinnedToCore(&task_MCPInt15, "CAN_INT_M15", 4096, this, 10, &intDelegateTask, 0);
+#endif
 
   initializedResources = true;
 }
@@ -1003,3 +1010,5 @@ void MCP2515::handleFrameDispatch(CAN_FRAME *frame, int filterHit)
 	//if none of the callback types caught this frame then queue it in the buffer
   xQueueSendFromISR(rxQueue, frame, NULL);
 }
+
+#endif
