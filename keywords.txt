@@ -13,7 +13,6 @@ CANListener	KEYWORD1
 # Methods and Functions (KEYWORD2)
 #######################################
 gotFrame	KEYWORD2
-gotFrameFD	KEYWORD2
 setCallback	KEYWORD2
 removeCallback	KEYWORD2
 setGeneralHandler	KEYWORD2
@@ -28,8 +27,6 @@ enable	KEYWORD2
 disable	KEYWORD2
 sendFrame	KEYWORD2
 available	KEYWORD2
-set_baudrateFD	KEYWORD2
-sendFrameFD	KEYWORD2
 read	KEYWORD2
 watchFor	KEYWORD2
 watchForRange	KEYWORD2
@@ -46,13 +43,6 @@ removeGeneralCallback	KEYWORD2
 attachCANInterrupt	KEYWORD2
 detachCANInterrupt	KEYWORD2
 supportsFDMode	KEYWORD2
-readFD	KEYWORD2
-beginFD	KEYWORD2
-getDataSpeedFD	KEYWORD2
-setGeneralCallbackFD	KEYWORD2
-setCallbackFD	KEYWORD2
-removeGeneralCallbackFD	KEYWORD2
-removeCallbackFD	KEYWORD2
 
 #######################################
 # Constants (LITERAL1)
@@ -68,7 +58,4 @@ CAN_BPS_33333	LITERAL1
 CAN_BPS_25K	LITERAL1
 CAN_DEFAULT_BAUD	LITERAL1
 CAN_DEFAULT_FD_RATE	LITERAL1
-
-
-
 

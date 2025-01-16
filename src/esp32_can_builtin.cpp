@@ -43,9 +43,9 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
     rxBufferSize = BI_RX_BUFFER_SIZE;
-    bus_handle = nullptr;
-    
+
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    bus_handle = nullptr;
     twai_general_cfg.controller_id = busNumber;
 #endif
 }
@@ -54,8 +54,9 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
 {
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     bus_handle = nullptr;
-
+#endif
     rxBufferSize = BI_RX_BUFFER_SIZE;
 
     for (int i = 0; i < BI_NUM_FILTERS; i++)
