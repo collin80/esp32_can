@@ -157,6 +157,9 @@ void ESP32CAN::task_CAN( void *pvParameters )
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
     CAN_FRAME rxFrame;
 
+    //delay a bit upon initial start up
+    vTaskDelay(pdMS_TO_TICKS(100));
+
     while (1)
     {
         if (uxQueueMessagesWaiting(espCan->callbackQueue)) {
@@ -166,9 +169,11 @@ void ESP32CAN::task_CAN( void *pvParameters )
                 espCan->sendCallback(&rxFrame);
             }
         }
+        else vTaskDelay(pdMS_TO_TICKS(4)); //if you don't delay here it will slow down the whole system. Need some delay.
 
+//probably don't need this extra delay. Test and find out.
 #if defined(CONFIG_FREERTOS_UNICORE)
-        delay(10);
+    vTaskDelay(pdMS_TO_TICKS(6)); 
 #endif
     }
 
