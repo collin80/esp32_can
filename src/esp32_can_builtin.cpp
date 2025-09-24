@@ -329,6 +329,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
             twai_general_cfg.mode = oldMode.mode;
             enable();
             Serial.println(" SUCCESS!");
+            busSpeed = valid_timings[idx].speed;
             return valid_timings[idx].speed;
         }
         else
@@ -357,6 +358,7 @@ uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
         {
             twai_speed_cfg = valid_timings[idx].cfg;
             enable();
+            busSpeed = ul_baudrate;
             return ul_baudrate;
         }
         idx++;
