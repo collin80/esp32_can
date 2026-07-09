@@ -231,26 +231,13 @@ void ESP32CAN::task_CAN(void *pvParameters)
     ESP32CAN *espCan = (ESP32CAN *)pvParameters;
     CAN_FRAME rxFrame;
 
-    // delay a bit upon initial start up
-    vTaskDelay(pdMS_TO_TICKS(100));
-
     while (1)
     {
-        if (uxQueueMessagesWaiting(espCan->callbackQueue))
+        //receive next CAN frame from queue and fire off the callback
+        if(xQueueReceive(espCan->callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
         {
-            // receive next CAN frame from queue and fire off the callback
-            if (xQueueReceive(espCan->callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
-            {
-                espCan->sendCallback(&rxFrame);
-            }
+            espCan->sendCallback(&rxFrame);
         }
-        else
-            vTaskDelay(pdMS_TO_TICKS(4)); // if you don't delay here it will slow down the whole system. Need some delay.
-
-// probably don't need this extra delay. Test and find out.
-#if defined(CONFIG_FREERTOS_UNICORE)
-        vTaskDelay(pdMS_TO_TICKS(6));
-#endif
     }
 
     vTaskDelete(NULL);
@@ -333,8 +320,11 @@ void ESP32CAN::_init()
         filters[i].configured = false;
     }
 
-    if (!CAN_WatchDog_Builtin_handler)
-    {
+    ESP_LOGI(TAG, "Creating queues");
+    callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
+    rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
+
+    if (!CAN_WatchDog_Builtin_handler) {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
         std::ostringstream canWatchDogTaskNameStream;
         canWatchDogTaskNameStream << "CAN_WD_BI_CAN" << twai_general_cfg.controller_id;
@@ -380,20 +370,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
             ESP_LOGE(TAG, "Failed to reconfigure alerts result = %d", result);
         }
     }
-    // this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    std::ostringstream canLowLevelTaskNameStream;
-    canLowLevelTaskNameStream << "CAN_LORX_CAN" << twai_general_cfg.controller_id;
-    const char *canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
-#else
-    const char *canLowLevelTaskName = "CAN_LORX_CAN0";
-#endif
 
-#if defined(CONFIG_FREERTOS_UNICORE)
-    xTaskCreate(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, NULL);
-#else
-    xTaskCreatePinnedToCore(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, NULL, 1);
-#endif
     ESP_LOGD(TAG, "init(): readyForTraffic = true");
     readyForTraffic = true;
     return ul_baudrate;
@@ -500,11 +477,6 @@ void ESP32CAN::enable()
     }
 #endif
 
-    ESP_LOGI(TAG, "Creating queues");
-
-    callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
-    rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
-
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     std::ostringstream canHandlerTaskNameStream;
     std::ostringstream canLowLevelTaskNameStream;
@@ -577,14 +549,6 @@ void ESP32CAN::disable()
             {
                 vTaskDelete(task);
                 task = NULL;
-            }
-        }
-
-        for (auto queue : {rx_queue, callbackQueue})
-        {
-            if (queue)
-            {
-                vQueueDelete(queue);
             }
         }
 
@@ -728,16 +692,12 @@ uint16_t ESP32CAN::available()
 uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
 {
     CAN_FRAME frame;
-    // receive next CAN frame from queue
-    if (uxQueueMessagesWaiting(rx_queue))
+    //receive next CAN frame from queue
+    if(xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
     {
-        if (xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
-        {
-            msg = frame; // do a copy in the case that the receive worked
-            return true;
-        }
-        else
-            return false;
+        msg = frame; //do a copy in the case that the receive worked
+        return true;
     }
-    return false; // otherwise we leave the msg variable alone and just return false
+    else
+        return false;
 }
