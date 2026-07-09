@@ -91,7 +91,11 @@ public:
   void sendCallback(CAN_FRAME *frame);
 
   void setCANPins(gpio_num_t rxPin, gpio_num_t txPin);
-
+  void setForceRecovery(bool enable, uint32_t delayMs = 2000);
+  void forceDriverRestart(); // Moved from private to public
+  void printStatus();
+  bool forcedRecoveryInProgress;
+  
   static void CAN_WatchDog_Builtin( void *pvParameters );
 
   #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
@@ -117,6 +121,9 @@ private:
   // Pin variables
   ESP32_FILTER filters[BI_NUM_FILTERS];
   int rxBufferSize;
+
+  bool forceRecoveryEnabled; // default false
+  uint32_t forceRecoveryDelay; // in ms, default 2000
 
   static void task_CAN(void *pvParameters);
   static void task_LowLevelRX(void *pvParameters);
