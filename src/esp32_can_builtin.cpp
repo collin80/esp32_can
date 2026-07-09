@@ -322,7 +322,11 @@ uint32_t ESP32CAN::beginAutoSpeed()
     _init();
 
     readyForTraffic = false;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    twai_stop_v2(bus_handle);
+#else
     twai_stop();
+#endif    
     twai_general_cfg.mode = TWAI_MODE_LISTEN_ONLY;
     int idx = 0;
     while (valid_timings[idx].speed != 0)
@@ -348,7 +352,11 @@ uint32_t ESP32CAN::beginAutoSpeed()
         idx++;
     }
     Serial.println("None of the tested CAN speeds worked!");
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    twai_stop_v2(bus_handle);
+#else
     twai_stop();
+#endif    
     return 0;
 }
 
@@ -461,9 +469,18 @@ void ESP32CAN::enable()
 void ESP32CAN::disable()
 {
     twai_status_info_t info;
-    if (twai_get_status_info(&info) == ESP_OK) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    auto result = twai_get_status_info_v2(bus_handle, &info);
+#else
+    auto result = twai_get_status_info(&info);
+#endif
+    if (result == ESP_OK) {
         if (info.state == TWAI_STATE_RUNNING) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+            twai_stop_v2(bus_handle);
+#else
             twai_stop();
+#endif            
         }
 
         for (auto task : {task_CAN_handler, task_LowLevelRX_handler}) {
@@ -480,7 +497,11 @@ void ESP32CAN::disable()
             }
         }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+        twai_driver_uninstall_v2(bus_handle);
+#else
         twai_driver_uninstall();
+#endif
     } else {
         return;
     }
@@ -559,6 +580,9 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     __TX_frame.data_length_code = txFrame.length;
     __TX_frame.rtr = txFrame.rtr;
     __TX_frame.extd = txFrame.extended;
+    __TX_frame.self = 0;
+    __TX_frame.ss = 0;
+    __TX_frame.dlc_non_comp = 0;
     for (int i = 0; i < 8; i++) __TX_frame.data[i] = txFrame.data.byte[i];
 
     //don't wait long if the queue was full. The end user code shouldn't be sending faster
