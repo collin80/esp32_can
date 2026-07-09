@@ -2,36 +2,38 @@
   ESP32_CAN.cpp - Library for ESP32 built-in CAN module
     Now converted to use the built-in TWAI driver in ESP-IDF. This should allow for support for the
     full range of ESP32 hardware and probably be more stable than the old approach.
-  
+
   Author: Collin Kidder
-  
+  Slightly modified by Matthew KuKanich
+
   Created: 31/1/18, significant rework 1/5/23
+  Force recovery mode added 4/3/25
 */
 
 #include "Arduino.h"
 #include "esp32_can_builtin.h"
-//because of the way the TWAI library works, it's just easier to store the valid timings here and anything not found here
-//is just plain not supported. If you need a different speed then add it here. Be sure to leave the zero record at the end
-//as it serves as a terminator
-const VALID_TIMING valid_timings[] = 
-{
-    {TWAI_TIMING_CONFIG_1MBITS(), 1000000},
-    {TWAI_TIMING_CONFIG_500KBITS(), 500000},
-    {TWAI_TIMING_CONFIG_250KBITS(), 250000},
-    {TWAI_TIMING_CONFIG_125KBITS(), 125000},
-    {TWAI_TIMING_CONFIG_800KBITS(), 800000},
-    {TWAI_TIMING_CONFIG_100KBITS(), 100000},
-    {TWAI_TIMING_CONFIG_50KBITS(), 50000},
-    {TWAI_TIMING_CONFIG_25KBITS(), 25000},
-    //caution, these next entries are custom and haven't really been fully tested yet.
-    //Note that brp can take values in multiples of 2 up to 128 and multiples of 4 up to 256
-    //TSEG1 can be 1 to 16 and TSEG2 can be 1 to 8. There is a silent +1 added to the sum of these two.
-    //The default clock is 80MHz so plan accordingly
-    {{.brp = 100, .tseg_1 = 7, .tseg_2 = 2, .sjw = 3, .triple_sampling = false}, 80000}, 
-    {{.brp = 120, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 33333},
-    //this one is only possible on ECO2 ESP32 or ESP32-S3 not on the older ESP32 chips
-    {{.brp = 200, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 20000},
-    {TWAI_TIMING_CONFIG_25KBITS(), 0} //this is a terminator record. When the code sees an entry with 0 speed it stops searching
+// because of the way the TWAI library works, it's just easier to store the valid timings here and anything not found here
+// is just plain not supported. If you need a different speed then add it here. Be sure to leave the zero record at the end
+// as it serves as a terminator
+const VALID_TIMING valid_timings[] =
+    {
+        {TWAI_TIMING_CONFIG_1MBITS(), 1000000},
+        {TWAI_TIMING_CONFIG_500KBITS(), 500000},
+        {TWAI_TIMING_CONFIG_250KBITS(), 250000},
+        {TWAI_TIMING_CONFIG_125KBITS(), 125000},
+        {TWAI_TIMING_CONFIG_800KBITS(), 800000},
+        {TWAI_TIMING_CONFIG_100KBITS(), 100000},
+        {TWAI_TIMING_CONFIG_50KBITS(), 50000},
+        {TWAI_TIMING_CONFIG_25KBITS(), 25000},
+        // caution, these next entries are custom and haven't really been fully tested yet.
+        // Note that brp can take values in multiples of 2 up to 128 and multiples of 4 up to 256
+        // TSEG1 can be 1 to 16 and TSEG2 can be 1 to 8. There is a silent +1 added to the sum of these two.
+        // The default clock is 80MHz so plan accordingly
+        {{.brp = 100, .tseg_1 = 7, .tseg_2 = 2, .sjw = 3, .triple_sampling = false}, 80000},
+        {{.brp = 120, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 33333},
+        // this one is only possible on ECO2 ESP32 or ESP32-S3 not on the older ESP32 chips
+        {{.brp = 200, .tseg_1 = 15, .tseg_2 = 4, .sjw = 3, .triple_sampling = false}, 20000},
+        {TWAI_TIMING_CONFIG_25KBITS(), 0} // this is a terminator record. When the code sees an entry with 0 speed it stops searching
 };
 
 ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_COMMON(32)
@@ -51,9 +53,14 @@ ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_
     bus_handle = nullptr;
     twai_general_cfg.controller_id = busNumber;
 #endif
+
+    // Initialize forced recovery mode to off by default
+    forceRecoveryEnabled = false;
+    forceRecoveryDelay = 2000; // default delay in ms
+    forcedRecoveryInProgress = false;
 }
 
-ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS) 
+ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
 {
     twai_general_cfg.tx_queue_len = BI_TX_BUFFER_SIZE;
     twai_general_cfg.rx_queue_len = 6;
@@ -72,6 +79,54 @@ ESP32CAN::ESP32CAN() : CAN_COMMON(BI_NUM_FILTERS)
 
     readyForTraffic = false;
     cyclesSinceTraffic = 0;
+
+    forceRecoveryEnabled = false;
+    forceRecoveryDelay = 2000;
+    forcedRecoveryInProgress = false;
+}
+
+void ESP32CAN::setForceRecovery(bool enable, uint32_t delayMs)
+{
+    forceRecoveryEnabled = enable;
+    forceRecoveryDelay = delayMs;
+}
+
+void ESP32CAN::forceDriverRestart()
+{
+    printf("Force-restarting TWAI driver...\n");
+    // Stop and uninstall the driver completely
+    disable();
+    // Wait for error counters to reset / hardware to settle
+    vTaskDelay(forceRecoveryDelay / portTICK_PERIOD_MS);
+    // Reinitialize the driver
+    enable();
+    printf("TWAI driver restarted successfully.\n");
+}
+
+void ESP32CAN::printStatus() {
+    twai_status_info_t status_info;
+    esp_err_t result;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+    result = twai_get_status_info_v2(bus_handle, &status_info);
+#else
+    result = twai_get_status_info(&status_info);
+#endif
+    if(result == ESP_OK) {
+        Serial.print("CAN Status: ");
+        Serial.print("State: ");
+        switch(status_info.state) {
+            case TWAI_STATE_STOPPED:    Serial.println("STOPPED"); break;
+            case TWAI_STATE_RUNNING:    Serial.println("RUNNING"); break;
+            case TWAI_STATE_BUS_OFF:    Serial.println("BUS-OFF"); break;
+            case TWAI_STATE_RECOVERING: Serial.println("RECOVERING"); break;
+            default:                    Serial.println("UNKNOWN"); break;
+        }
+        Serial.print("TX Errors: "); Serial.println(status_info.tx_error_counter);
+        Serial.print("RX Errors: "); Serial.println(status_info.rx_error_counter);
+        Serial.print("Bus Errors: "); Serial.println(status_info.bus_error_count);
+    } else {
+        Serial.println("Failed to read CAN status info.");
+    }
 }
 
 void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
@@ -80,15 +135,26 @@ void ESP32CAN::setCANPins(gpio_num_t rxPin, gpio_num_t txPin)
     twai_general_cfg.tx_io = txPin;
 }
 
-void ESP32CAN::CAN_WatchDog_Builtin( void *pvParameters )
-{
+void ForceRecoveryTask(void *pvParameters) {
+    ESP32CAN *espCan = (ESP32CAN*)pvParameters;
+    espCan->forceDriverRestart();
+    // Mark recovery as complete
+    espCan->forcedRecoveryInProgress = false;
+    vTaskDelete(NULL);
+}
+
+
+void ESP32CAN::CAN_WatchDog_Builtin(void *pvParameters) {
     ESP32CAN* espCan = (ESP32CAN*)pvParameters;
     const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
     twai_status_info_t status_info;
 
-    for(;;)
-    {
-        vTaskDelay( xDelay );
+    for(;;) {
+        vTaskDelay(xDelay);
+        // If recovery is already in progress, skip this cycle.
+        if (espCan->forcedRecoveryInProgress) {
+            continue;
+        }
         espCan->cyclesSinceTraffic++;
 
         esp_err_t result;
@@ -97,16 +163,19 @@ void ESP32CAN::CAN_WatchDog_Builtin( void *pvParameters )
 #else
         result = twai_get_status_info(&status_info);
 #endif
-        if (result == ESP_OK)
-        {
-            if (status_info.state == TWAI_STATE_BUS_OFF)
-            {
+        if (result == ESP_OK) {
+            if (status_info.state == TWAI_STATE_BUS_OFF) {
                 espCan->cyclesSinceTraffic = 0;
-
+                if (espCan->forceRecoveryEnabled && !espCan->forcedRecoveryInProgress) {
+                    Serial.println("Forced recovery mode active: scheduling full driver restart.");
+                    espCan->forcedRecoveryInProgress = true;
+                    // Create a dedicated task for forced recovery. Increase stack size if needed.
+                    xTaskCreate(ForceRecoveryTask, "ForceRecoveryTask", 4096, espCan, 10, NULL);
+                } else {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-                result = twai_initiate_recovery_v2(espCan->bus_handle);
+                    result = twai_initiate_recovery_v2(espCan->bus_handle);
 #else
-                result = twai_initiate_recovery();
+                    result = twai_initiate_recovery();
 #endif
                 if (result != ESP_OK)
                 {
@@ -117,13 +186,15 @@ void ESP32CAN::CAN_WatchDog_Builtin( void *pvParameters )
     }
 }
 
-//infinitely loops accepting frames from the TWAI driver. Calls
-//our processing routine which then applies the custom 32 filters and
-//decides whether to trigger callbacks or queue the frame (or throw it away)
+
+
+// infinitely loops accepting frames from the TWAI driver. Calls
+// our processing routine which then applies the custom 32 filters and
+// decides whether to trigger callbacks or queue the frame (or throw it away)
 void ESP32CAN::task_LowLevelRX(void *pvParameters)
 {
-    ESP32CAN* espCan = (ESP32CAN*)pvParameters;
-    
+    ESP32CAN *espCan = (ESP32CAN *)pvParameters;
+
     while (1)
     {
         twai_message_t message;
@@ -140,9 +211,9 @@ void ESP32CAN::task_LowLevelRX(void *pvParameters)
                 espCan->processFrame(message);
             }
         }
-        else vTaskDelay(pdMS_TO_TICKS(100));
+        else
+            vTaskDelay(pdMS_TO_TICKS(100));
     }
-    
 }
 
 /*
@@ -155,28 +226,30 @@ bit   31 -    If set indicates an object callback
 bits  24-30 - Idx into listener table
 bits  0-7   - Mailbox number that triggered callback
 */
-void ESP32CAN::task_CAN( void *pvParameters )
+void ESP32CAN::task_CAN(void *pvParameters)
 {
-    ESP32CAN* espCan = (ESP32CAN*)pvParameters;
+    ESP32CAN *espCan = (ESP32CAN *)pvParameters;
     CAN_FRAME rxFrame;
 
-    //delay a bit upon initial start up
+    // delay a bit upon initial start up
     vTaskDelay(pdMS_TO_TICKS(100));
 
     while (1)
     {
-        if (uxQueueMessagesWaiting(espCan->callbackQueue)) {
-            //receive next CAN frame from queue and fire off the callback
-            if(xQueueReceive(espCan->callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
+        if (uxQueueMessagesWaiting(espCan->callbackQueue))
+        {
+            // receive next CAN frame from queue and fire off the callback
+            if (xQueueReceive(espCan->callbackQueue, &rxFrame, portMAX_DELAY) == pdTRUE)
             {
                 espCan->sendCallback(&rxFrame);
             }
         }
-        else vTaskDelay(pdMS_TO_TICKS(4)); //if you don't delay here it will slow down the whole system. Need some delay.
+        else
+            vTaskDelay(pdMS_TO_TICKS(4)); // if you don't delay here it will slow down the whole system. Need some delay.
 
-//probably don't need this extra delay. Test and find out.
+// probably don't need this extra delay. Test and find out.
 #if defined(CONFIG_FREERTOS_UNICORE)
-    vTaskDelay(pdMS_TO_TICKS(6)); 
+        vTaskDelay(pdMS_TO_TICKS(6));
 #endif
     }
 
@@ -185,24 +258,27 @@ void ESP32CAN::task_CAN( void *pvParameters )
 
 void ESP32CAN::sendCallback(CAN_FRAME *frame)
 {
-    //frame buffer
+    // frame buffer
     CANListener *thisListener;
     int mb;
     int idx;
 
     mb = (frame->fid & 0xFF);
-    if (mb == 0xFF) mb = -1;
+    if (mb == 0xFF)
+        mb = -1;
 
-    if (frame->fid & 0x80000000ul) //object callback
+    if (frame->fid & 0x80000000ul) // object callback
     {
         idx = (frame->fid >> 24) & 0x7F;
         thisListener = listener[idx];
         thisListener->gotFrame(frame, mb);
     }
-    else //C function callback
+    else // C function callback
     {
-        if (mb > -1) (*cbCANFrame[mb])(frame);
-        else (*cbGeneral)(frame);
+        if (mb > -1)
+            (*cbCANFrame[mb])(frame);
+        else
+            (*cbGeneral)(frame);
     }
 }
 
@@ -233,20 +309,22 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
 {
     for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
-        if (!filters[i].configured) 
+        if (!filters[i].configured)
         {
             ESP_LOGI(TAG, "ID 0x%x -> mailbox %d", id, i);
             _setFilterSpecific(i, id, mask, extended);
             return i;
         }
     }
-    if (debuggingMode) Serial.println("Could not set filter!");
+    if (debuggingMode)
+        Serial.println("Could not set filter!");
     return -1;
 }
 
 void ESP32CAN::_init()
 {
-    if (debuggingMode) Serial.println("Built in CAN Init");
+    if (debuggingMode)
+        Serial.println("Built in CAN Init");
     for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
         filters[i].id = 0;
@@ -255,7 +333,8 @@ void ESP32CAN::_init()
         filters[i].configured = false;
     }
 
-    if (!CAN_WatchDog_Builtin_handler) {
+    if (!CAN_WatchDog_Builtin_handler)
+    {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
         std::ostringstream canWatchDogTaskNameStream;
         canWatchDogTaskNameStream << "CAN_WD_BI_CAN" << twai_general_cfg.controller_id;
@@ -270,7 +349,8 @@ void ESP32CAN::_init()
         xTaskCreatePinnedToCore(&CAN_WatchDog_Builtin, canWatchDogTaskName, 2048, this, 10, &CAN_WatchDog_Builtin_handler, 1);
 #endif
     }
-    if (debuggingMode) Serial.println("_init done");
+    if (debuggingMode)
+        Serial.println("_init done");
 }
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
@@ -282,9 +362,8 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
     ESP_LOGD(TAG, "Baudrate set");
     if (debuggingMode)
     {
-        //Reconfigure alerts to detect Error Passive and Bus-Off error states
-        uint32_t alerts_to_enable = TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_OFF | TWAI_ALERT_AND_LOG | TWAI_ALERT_ERR_ACTIVE 
-                                  | TWAI_ALERT_ARB_LOST | TWAI_ALERT_BUS_ERROR | TWAI_ALERT_TX_FAILED | TWAI_ALERT_RX_QUEUE_FULL;
+        // Reconfigure alerts to detect Error Passive and Bus-Off error states
+        uint32_t alerts_to_enable = TWAI_ALERT_ERR_PASS | TWAI_ALERT_BUS_OFF | TWAI_ALERT_AND_LOG | TWAI_ALERT_ERR_ACTIVE | TWAI_ALERT_ARB_LOST | TWAI_ALERT_BUS_ERROR | TWAI_ALERT_TX_FAILED | TWAI_ALERT_RX_QUEUE_FULL;
 
         esp_err_t result;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
@@ -301,13 +380,13 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
             ESP_LOGE(TAG, "Failed to reconfigure alerts result = %d", result);
         }
     }
-    //this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    // this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     std::ostringstream canLowLevelTaskNameStream;
     canLowLevelTaskNameStream << "CAN_LORX_CAN" << twai_general_cfg.controller_id;
-    const char* canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
+    const char *canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
 #else
-    const char* canLowLevelTaskName = "CAN_LORX_CAN0";
+    const char *canLowLevelTaskName = "CAN_LORX_CAN0";
 #endif
 
 #if defined(CONFIG_FREERTOS_UNICORE)
@@ -342,8 +421,8 @@ uint32_t ESP32CAN::beginAutoSpeed()
         Serial.print("Trying Speed ");
         Serial.print(valid_timings[idx].speed);
         enable();
-        delay(600); //wait a while
-        if (cyclesSinceTraffic < 2) //only would happen if there had been traffic
+        delay(600);                 // wait a while
+        if (cyclesSinceTraffic < 2) // only would happen if there had been traffic
         {
             disable();
             twai_general_cfg.mode = oldMode.mode;
@@ -369,7 +448,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
 uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
 {
     disable();
-    //now try to find a valid timing to use
+    // now try to find a valid timing to use
     int idx = 0;
     while (valid_timings[idx].speed != 0)
     {
@@ -388,14 +467,14 @@ uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
 void ESP32CAN::setListenOnlyMode(bool state)
 {
     disable();
-    twai_general_cfg.mode = state?TWAI_MODE_LISTEN_ONLY:TWAI_MODE_NORMAL;
+    twai_general_cfg.mode = state ? TWAI_MODE_LISTEN_ONLY : TWAI_MODE_NORMAL;
     enable();
 }
 
 void ESP32CAN::setNoACKMode(bool state)
 {
     disable();
-    twai_general_cfg.mode = state?TWAI_MODE_NO_ACK:TWAI_MODE_NORMAL;
+    twai_general_cfg.mode = state ? TWAI_MODE_NO_ACK : TWAI_MODE_NORMAL;
     enable();
 }
 
@@ -431,11 +510,11 @@ void ESP32CAN::enable()
     std::ostringstream canLowLevelTaskNameStream;
     canHandlerTaskNameStream << "CAN_RX_CAN" << twai_general_cfg.controller_id;
     canLowLevelTaskNameStream << "CAN_LORX_CAN" << twai_general_cfg.controller_id;
-    const char* canHandlerTaskName = canHandlerTaskNameStream.str().c_str();
-    const char* canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
+    const char *canHandlerTaskName = canHandlerTaskNameStream.str().c_str();
+    const char *canLowLevelTaskName = canLowLevelTaskNameStream.str().c_str();
 #else
-    const char* canHandlerTaskName = "CAN_RX_CAN";
-    const char* canLowLevelTaskName = "CAN_LORX_CAN";
+    const char *canHandlerTaskName = "CAN_RX_CAN";
+    const char *canLowLevelTaskName = "CAN_LORX_CAN";
 #endif
 
     ESP_LOGI(TAG, "Starting can handler task %s", canHandlerTaskName);
@@ -445,7 +524,7 @@ void ESP32CAN::enable()
     ESP_LOGI(TAG, "Starting low level RX task %s", canLowLevelTaskName);
     xTaskCreate(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler);
 #else
-    //this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
+    // this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
     xTaskCreatePinnedToCore(&task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler, 1);
 #endif
 
@@ -492,7 +571,8 @@ void ESP32CAN::disable()
 #endif            
         }
 
-        for (auto task : {task_CAN_handler, task_LowLevelRX_handler}) {
+        for (auto task : {task_CAN_handler, task_LowLevelRX_handler})
+        {
             if (task != NULL)
             {
                 vTaskDelete(task);
@@ -500,8 +580,10 @@ void ESP32CAN::disable()
             }
         }
 
-        for (auto queue : {rx_queue, callbackQueue}) {
-            if (queue) {
+        for (auto queue : {rx_queue, callbackQueue})
+        {
+            if (queue)
+            {
                 vQueueDelete(queue);
             }
         }
@@ -519,26 +601,28 @@ void ESP32CAN::disable()
     readyForTraffic = false;
 }
 
-//This function is too big to be running in interrupt context. Refactored so it doesn't.
+// This function is too big to be running in interrupt context. Refactored so it doesn't.
 bool ESP32CAN::processFrame(twai_message_t &frame)
 {
     CANListener *thisListener;
     CAN_FRAME msg;
 
-    cyclesSinceTraffic = 0; //reset counter to show that we are receiving traffic
+    cyclesSinceTraffic = 0; // reset counter to show that we are receiving traffic
 
     msg.id = frame.identifier;
     msg.length = frame.data_length_code;
     msg.rtr = frame.rtr;
     msg.extended = frame.extd;
-    for (int i = 0; i < 8; i++) msg.data.byte[i] = frame.data[i];
-    
+    for (int i = 0; i < 8; i++)
+        msg.data.byte[i] = frame.data[i];
+
     for (int i = 0; i < BI_NUM_FILTERS; i++)
     {
-        if (!filters[i].configured) continue;
+        if (!filters[i].configured)
+            continue;
         if ((msg.id & filters[i].mask) == filters[i].id && (filters[i].extended == msg.extended))
         {
-            //frame is accepted, lets see if it matches a mailbox callback
+            // frame is accepted, lets see if it matches a mailbox callback
             if (cbCANFrame[i])
             {
                 msg.fid = i;
@@ -558,32 +642,33 @@ bool ESP32CAN::processFrame(twai_message_t &frame)
                     thisListener = listener[listenerPos];
                     if (thisListener != NULL)
                     {
-                        if (thisListener->isCallbackActive(i)) 
-				        {
-					        msg.fid = 0x80000000ul + (listenerPos << 24ul) + i;
+                        if (thisListener->isCallbackActive(i))
+                        {
+                            msg.fid = 0x80000000ul + (listenerPos << 24ul) + i;
                             xQueueSend(callbackQueue, &msg, 0);
                             return true;
-				        }
-				        else if (thisListener->isCallbackActive(numFilters)) //global catch-all 
-				        {
+                        }
+                        else if (thisListener->isCallbackActive(numFilters)) // global catch-all
+                        {
                             msg.fid = 0x80000000ul + (listenerPos << 24ul) + 0xFF;
-					        xQueueSend(callbackQueue, &msg, 0);
+                            xQueueSend(callbackQueue, &msg, 0);
                             return true;
-				        }
+                        }
                     }
                 }
             }
-            
-            //otherwise, send frame to input queue
+
+            // otherwise, send frame to input queue
             xQueueSend(rx_queue, &msg, 0);
-            if (debuggingMode) Serial.write('_');
+            if (debuggingMode)
+                Serial.write('_');
             return true;
         }
     }
     return false;
 }
 
-bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
+bool ESP32CAN::sendFrame(CAN_FRAME &txFrame)
 {
     twai_message_t __TX_frame;
 
@@ -596,8 +681,8 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     __TX_frame.dlc_non_comp = 0;
     for (int i = 0; i < 8; i++) __TX_frame.data[i] = txFrame.data.byte[i];
 
-    //don't wait long if the queue was full. The end user code shouldn't be sending faster
-    //than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
+    // don't wait long if the queue was full. The end user code shouldn't be sending faster
+    // than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
     esp_err_t result;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     result = twai_transmit_v2(bus_handle, &__TX_frame, pdMS_TO_TICKS(4));
@@ -607,47 +692,52 @@ bool ESP32CAN::sendFrame(CAN_FRAME& txFrame)
     switch (result)
     {
     case ESP_OK:
-        if (debuggingMode) Serial.write('<');
+        if (debuggingMode)
+            Serial.write('<');
         break;
     case ESP_ERR_TIMEOUT:
-        if (debuggingMode) Serial.write('T');
+        if (debuggingMode)
+            Serial.write('T');
         break;
     case ESP_ERR_INVALID_ARG:
     case ESP_FAIL:
     case ESP_ERR_INVALID_STATE:
     case ESP_ERR_NOT_SUPPORTED:
-        if (debuggingMode) Serial.write('!');
+        if (debuggingMode)
+            Serial.write('!');
         break;
     }
-    
+
     return true;
 }
 
 bool ESP32CAN::rx_avail()
 {
-    if (!rx_queue) return false;
-    return uxQueueMessagesWaiting(rx_queue) > 0?true:false;
+    if (!rx_queue)
+        return false;
+    return uxQueueMessagesWaiting(rx_queue) > 0 ? true : false;
 }
 
 uint16_t ESP32CAN::available()
 {
-    if (!rx_queue) return 0;
+    if (!rx_queue)
+        return 0;
     return uxQueueMessagesWaiting(rx_queue);
 }
 
 uint32_t ESP32CAN::get_rx_buff(CAN_FRAME &msg)
 {
     CAN_FRAME frame;
-    //receive next CAN frame from queue
-    if (uxQueueMessagesWaiting(rx_queue)) {
-        if(xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
+    // receive next CAN frame from queue
+    if (uxQueueMessagesWaiting(rx_queue))
+    {
+        if (xQueueReceive(rx_queue, &frame, 0) == pdTRUE)
         {
-            msg = frame; //do a copy in the case that the receive worked
+            msg = frame; // do a copy in the case that the receive worked
             return true;
         }
         else
             return false;
     }
-    return false; //otherwise we leave the msg variable alone and just return false
+    return false; // otherwise we leave the msg variable alone and just return false
 }
-
