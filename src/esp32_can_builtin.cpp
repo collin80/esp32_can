@@ -38,6 +38,9 @@ const VALID_TIMING valid_timings[] =
 
 ESP32CAN::ESP32CAN(gpio_num_t rxPin, gpio_num_t txPin, uint8_t busNumber) : CAN_COMMON(32)
 {
+    snprintf(TAG, sizeof(TAG), "ESP32CAN%d", busNumber);
+    ESP_LOGI(TAG, "Create driver for bus %d", busNumber);
+
     twai_general_cfg.rx_io = rxPin;
     twai_general_cfg.tx_io = txPin;
     cyclesSinceTraffic = 0;
@@ -174,9 +177,9 @@ void ESP32CAN::CAN_WatchDog_Builtin(void *pvParameters) {
 #else
                     result = twai_initiate_recovery();
 #endif
-                    if (result != ESP_OK) {
-                        Serial.println("Could not initiate bus recovery!");
-                    }
+                if (result != ESP_OK)
+                {
+                    ESP_LOGE(espCan->TAG, "Could not initiate bus recovery, result = %d!", result);
                 }
             }
         }
@@ -308,6 +311,7 @@ int ESP32CAN::_setFilter(uint32_t id, uint32_t mask, bool extended)
     {
         if (!filters[i].configured)
         {
+            ESP_LOGI(TAG, "ID 0x%x -> mailbox %d", id, i);
             _setFilterSpecific(i, id, mask, extended);
             return i;
         }
@@ -351,11 +355,11 @@ void ESP32CAN::_init()
 
 uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 {
-    ESP_LOGD("CAN", "Init called");
+    ESP_LOGD(TAG, "Init called");
     _init();
-    ESP_LOGD("CAN", "Init done");
+    ESP_LOGD(TAG, "Init done");
     set_baudrate(ul_baudrate);
-    ESP_LOGD("CAN", "Baudrate set");
+    ESP_LOGD(TAG, "Baudrate set");
     if (debuggingMode)
     {
         // Reconfigure alerts to detect Error Passive and Bus-Off error states
@@ -369,11 +373,11 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 #endif
         if (result == ESP_OK)
         {
-            printf("Alerts reconfigured\n");
+            ESP_LOGI(TAG, "Alerts reconfigured");
         }
         else
         {
-            printf("Failed to reconfigure alerts");
+            ESP_LOGE(TAG, "Failed to reconfigure alerts result = %d", result);
         }
     }
     // this task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
@@ -390,6 +394,7 @@ uint32_t ESP32CAN::init(uint32_t ul_baudrate)
 #else
     xTaskCreatePinnedToCore(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, NULL, 1);
 #endif
+    ESP_LOGD(TAG, "init(): readyForTraffic = true");
     readyForTraffic = true;
     return ul_baudrate;
 }
@@ -400,6 +405,7 @@ uint32_t ESP32CAN::beginAutoSpeed()
 
     _init();
 
+    ESP_LOGD(TAG, "beginAutoSpeed(): readyForTraffic = false");
     readyForTraffic = false;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     twai_stop_v2(bus_handle);
@@ -454,7 +460,7 @@ uint32_t ESP32CAN::set_baudrate(uint32_t ul_baudrate)
         }
         idx++;
     }
-    printf("Could not find a valid bit timing! You will need to add your desired speed to the library!\n");
+    ESP_LOGW(TAG, "Could not find a valid bit timing! You will need to add your desired speed to the library!");
     return 0;
 }
 
@@ -475,28 +481,26 @@ void ESP32CAN::setNoACKMode(bool state)
 void ESP32CAN::enable()
 {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    if (twai_driver_install_v2(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg, &bus_handle) == ESP_OK)
-    {
-        printf("Driver installed - bus %d\n", twai_general_cfg.controller_id);
-    }
-    else
-    {
-        printf("Failed to install driver - bus %d\n", twai_general_cfg.controller_id);
+    auto result = twai_driver_install_v2(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg, &bus_handle);
+    if (result == ESP_OK) {
+        ESP_LOGI(TAG, "Driver %d installed, handle 0x%x", twai_general_cfg.controller_id, bus_handle);
+    } else {
+        ESP_LOGE(TAG, "Failed to install driver %d: error: 0x%x", twai_general_cfg.controller_id, result);
         return;
     }
 #else
     if (twai_driver_install(&twai_general_cfg, &twai_speed_cfg, &twai_filters_cfg) == ESP_OK)
     {
-        printf("TWAI Driver installed\n");
+        ESP_LOGI(TAG, "TWAI Driver installed");
     }
     else
     {
-        printf("Failed to install TWAI driver\n");
+        ESP_LOGE(TAG, "Failed to install TWAI driver");
         return;
     }
 #endif
 
-    printf("Creating queues\n");
+    ESP_LOGI(TAG, "Creating queues");
 
     callbackQueue = xQueueCreate(16, sizeof(CAN_FRAME));
     rx_queue = xQueueCreate(rxBufferSize, sizeof(CAN_FRAME));
@@ -513,11 +517,11 @@ void ESP32CAN::enable()
     const char *canLowLevelTaskName = "CAN_LORX_CAN";
 #endif
 
-    printf("Starting can handler task\n");
+    ESP_LOGI(TAG, "Starting can handler task %s", canHandlerTaskName);
     xTaskCreate(ESP32CAN::task_CAN, canHandlerTaskName, 8192, this, 15, &task_CAN_handler);
 
 #if defined(CONFIG_FREERTOS_UNICORE)
-    printf("Starting low level RX task\n");
+    ESP_LOGI(TAG, "Starting low level RX task %s", canLowLevelTaskName);
     xTaskCreate(ESP32CAN::task_LowLevelRX, canLowLevelTaskName, 4096, this, 19, &task_LowLevelRX_handler);
 #else
     // this next task implements our better filtering on top of the TWAI library. Accept all frames then filter in here VVVVV
@@ -525,29 +529,28 @@ void ESP32CAN::enable()
 #endif
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
-    // Start TWAI driver
-    if (twai_start_v2(bus_handle) == ESP_OK)
-    {
-        printf("Driver started - bus %d\n", twai_general_cfg.controller_id);
-    }
-    else
-    {
-        printf("Failed to start driver\n");
+    //Start TWAI driver
+    result = twai_start_v2(bus_handle);
+    if (result == ESP_OK) {
+        ESP_LOGI(TAG, "TWAI Driver %d started", twai_general_cfg.controller_id);
+    } else {
+        ESP_LOGE(TAG, "Failed to start TWAI driver %d: error: 0x%", twai_general_cfg.controller_id, result);
         return;
     }
 #else
     // Start TWAI driver
     if (twai_start() == ESP_OK)
     {
-        printf("TWAI Driver started\n");
+        ESP_LOGI(TAG, "TWAI Driver started");
     }
     else
     {
-        printf("Failed to start TWAI driver\n");
+        ESP_LOGE(TAG, "Failed to start TWAI driver");
         return;
     }
 #endif
 
+    ESP_LOGD(TAG, "enable(): readyForTraffic = true");
     readyForTraffic = true;
 }
 
@@ -589,11 +592,12 @@ void ESP32CAN::disable()
         twai_driver_uninstall_v2(bus_handle);
 #else
         twai_driver_uninstall();
-    }
-    else
-    {
+#endif
+    } else {
+        ESP_LOGD(TAG, "disable(): twai_get_status_info returned %d", result);
         return;
     }
+    ESP_LOGD(TAG, "disable(): readyForTraffic = false");
     readyForTraffic = false;
 }
 

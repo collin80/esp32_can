@@ -118,6 +118,7 @@ protected:
   TaskHandle_t task_LowLevelRX_handler = NULL;
 
 private:
+  char TAG[10] = {0};
   // Pin variables
   ESP32_FILTER filters[BI_NUM_FILTERS];
   int rxBufferSize;
