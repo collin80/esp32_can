@@ -149,7 +149,8 @@ void ESP32CAN::CAN_WatchDog_Builtin(void *pvParameters) {
     const TickType_t xDelay = 200 / portTICK_PERIOD_MS;
     twai_status_info_t status_info;
 
-    for(;;) {
+    for(;;) 
+    {
         vTaskDelay(xDelay);
         // If recovery is already in progress, skip this cycle.
         if (espCan->forcedRecoveryInProgress) {
@@ -163,29 +164,34 @@ void ESP32CAN::CAN_WatchDog_Builtin(void *pvParameters) {
 #else
         result = twai_get_status_info(&status_info);
 #endif
-        if (result == ESP_OK) {
-            if (status_info.state == TWAI_STATE_BUS_OFF) {
+        if (result == ESP_OK)
+        {
+            if (status_info.state == TWAI_STATE_BUS_OFF)
+            {
                 espCan->cyclesSinceTraffic = 0;
-                if (espCan->forceRecoveryEnabled && !espCan->forcedRecoveryInProgress) {
+                if (espCan->forceRecoveryEnabled && !espCan->forcedRecoveryInProgress)
+                {
                     Serial.println("Forced recovery mode active: scheduling full driver restart.");
                     espCan->forcedRecoveryInProgress = true;
                     // Create a dedicated task for forced recovery. Increase stack size if needed.
                     xTaskCreate(ForceRecoveryTask, "ForceRecoveryTask", 4096, espCan, 10, NULL);
-                } else {
+                } 
+                else 
+                {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
                     result = twai_initiate_recovery_v2(espCan->bus_handle);
 #else
                     result = twai_initiate_recovery();
 #endif
-                if (result != ESP_OK)
-                {
-                    ESP_LOGE(espCan->TAG, "Could not initiate bus recovery, result = %d!", result);
+                    if (result != ESP_OK)
+                    {
+                        ESP_LOGE(espCan->TAG, "Could not initiate bus recovery, result = %d!", result);
+                    }
                 }
             }
         }
     }
 }
-
 
 
 // infinitely loops accepting frames from the TWAI driver. Calls
